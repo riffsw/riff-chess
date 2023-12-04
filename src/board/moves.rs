@@ -1227,7 +1227,7 @@ mod tests {
         let position = Position::default()
             .set_contents(C2, None)
             .set_contents(D2, None);
-let state = MoveState::new(position);
+        let state = MoveState::new(position);
         let destinations = state.legal_moves(C1).destinations();
         assert_eq!(destinations.len(), 5);
         assert!(!destinations.contains(B2));
