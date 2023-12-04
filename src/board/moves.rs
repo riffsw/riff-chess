@@ -1163,6 +1163,23 @@ mod tests {
         assert_eq!(state.contents(A8), &None);
     }
     #[test]
+    fn test_queen_destinations() {
+        let position = Position::default()
+        .set_contents(C1, None)
+        .set_contents(C2, None)
+        .set_contents(D2, None);
+        let state = MoveState::new(position);
+        let destinations = state.legal_moves(D1).destinations();
+        assert_eq!(destinations.len(), 10);
+        assert!(destinations.contains(C1));
+        assert!(!destinations.contains(B1));
+        assert!(destinations.contains(B3));
+        assert!(destinations.contains(D6));
+        assert!(destinations.contains(D7));
+        assert!(!destinations.contains(D8));
+        assert!(!destinations.contains(E2));
+    }
+    #[test]
     fn test_queen_blocked() {
         let state = MoveState::default();
         let destinations = state.legal_moves(D1).destinations();
@@ -1183,6 +1200,46 @@ mod tests {
             .set_contents(H3, Some(Material::WP));
         let state = MoveState::new(position);
         let destinations = state.legal_moves(G1).destinations();
+        assert_eq!(destinations, Mask::empty());
+    }
+    #[test]
+    fn test_rook_destinations() {
+        let position = Position::default()
+        .set_contents(A2, None)
+        .set_contents(B1, None);
+        let state = MoveState::new(position);
+        let destinations = state.legal_moves(A1).destinations();
+        assert_eq!(destinations.len(), 7);
+        assert!(destinations.contains(B1));
+        assert!(!destinations.contains(B2));
+        assert!(destinations.contains(A3));
+        assert!(destinations.contains(A7));
+        assert!(!destinations.contains(A8));
+    }
+    #[test]
+    fn test_rook_blocked() {
+        let state = MoveState::default();
+        let destinations = state.legal_moves(A1).destinations();
+        assert_eq!(destinations, Mask::empty());
+    }
+    #[test]
+    fn test_bishop_destinations() {
+        let position = Position::default()
+            .set_contents(C2, None)
+            .set_contents(D2, None);
+let state = MoveState::new(position);
+        let destinations = state.legal_moves(C1).destinations();
+        assert_eq!(destinations.len(), 5);
+        assert!(!destinations.contains(B2));
+        assert!(!destinations.contains(C2));
+        assert!(destinations.contains(D2));
+        assert!(destinations.contains(E3));
+        assert!(destinations.contains(H6));
+    }
+    #[test]
+    fn test_bishop_blocked() {
+        let state = MoveState::default();
+        let destinations = state.legal_moves(C1).destinations();
         assert_eq!(destinations, Mask::empty());
     }
 }
