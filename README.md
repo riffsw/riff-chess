@@ -1,14 +1,14 @@
-# riff_chess
+# riff-chess
 A Rust library for interactive chess apps
 
-`riff_chess` is a Rust library designed to support building interactive
+`riff-chess` is a Rust library designed to support building interactive
 chess apps. It's a work-in-progress and currently supports game logic for
 both standard chess and chess960. I do have plans to build a front-end 
 (using Dioxus) and a back-end (using SurrealDb) all in Rust. 
 
 ## Features
 
-`riff_chess` includes the following features:
+`riff-chess` includes the following features:
 
 - [x] Standard chess rules
 - [x] Chess960 rules
@@ -27,8 +27,8 @@ both standard chess and chess960. I do have plans to build a front-end
 
 ## Getting Started
 
-Include `riff_chess` in your Cargo.toml:
+Include `riff-chess` in your Cargo.toml:
 
 ```toml
 [dependencies]
-riff_chess = "0.1.0"
+riff-chess = "0.1.0"
