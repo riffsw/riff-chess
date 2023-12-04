@@ -367,7 +367,9 @@ pub trait LegalMoves: AsRef<Position> + AsRef<MoveState> {
         let mut result = MoveSet::new();
         let state: &MoveState = self.as_ref();
         if !state.is_double_check() && state.pinned(from).is_none() {
-            for dest in KNIGHT_MOVES[from].iter() {
+            let mut destinations = KNIGHT_MOVES[from];
+            destinations &= !state.ours();
+            for dest in destinations.iter() {
                 result.insert(dest, LegalMove::Standard(from, dest))
             }
         }
@@ -1165,5 +1167,22 @@ mod tests {
         let state = MoveState::default();
         let destinations = state.legal_moves(D1).destinations();
         assert!(destinations.is_empty());
+    }
+    #[test]
+    fn test_knight_destinations() {
+        let state = MoveState::default();
+        let destinations = state.legal_moves(G1).destinations();
+        assert_eq!(destinations.len(), 2);
+        assert!(destinations.contains(F3));
+        assert!(destinations.contains(H3));
+    }
+    #[test]
+    fn test_knight_blocked() {
+        let position = Position::default()
+            .set_contents(F3, Some(Material::WP))
+            .set_contents(H3, Some(Material::WP));
+        let state = MoveState::new(position);
+        let destinations = state.legal_moves(G1).destinations();
+        assert_eq!(destinations, Mask::empty());
     }
 }
