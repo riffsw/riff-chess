@@ -1,4 +1,4 @@
-// Copyright 2023 Tobin Edwards
+// Copyright 2024 Tobin Edwards
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
 //    you may not use this file except in compliance with the License.
@@ -12,11 +12,10 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-use std::{collections::HashMap, fmt::Display};
+use std::fmt::Display;
 use rand::{thread_rng, Rng};
 use thiserror::Error;
 use anyhow::Result;
-use strum::IntoEnumIterator;
 use std::ops::{Index, IndexMut};
 use once_cell::sync::Lazy;
 use std::hash::{Hash, Hasher};
@@ -24,8 +23,7 @@ use serde::{Deserialize, Serialize};
 
 use super::square::File;
 use super::material::Piece;
-use File::{FileA, FileB, FileC, FileD, FileE, FileF, FileG, FileH};
-use Piece::{King, Queen, Rook, Bishop, Knight};
+use Piece::{King, Queen, Rook, Bishop, Knight, Pawn};
 
 #[derive(Error, Debug, Serialize, Deserialize)]
 pub enum BackRankError {
@@ -47,7 +45,7 @@ use BackRankError::*;
 pub struct BackRankId(usize);
 
 impl BackRankId {
-    pub const STANDARD: Self = Self(0);
+    pub const STANDARD: Self = Self(518);
 
     pub fn shuffled() -> Self {
         let index = thread_rng().gen_range(0..960usize);
@@ -117,6 +115,7 @@ pub trait BackRanks: AsRef<BackRank> {
 /// Represents a configuration of pieces on a chessboard's back rank.
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq)]
 pub struct BackRank {
+    id: BackRankId,
     pieces: [Piece; 8],
     king: File,
     queen: File,
@@ -146,122 +145,90 @@ impl AsRef<Self> for BackRank {
 impl BackRanks for BackRank {}
 
 impl BackRank {
+    /// Creates a new back rank configuration with provided backrank id.
+    /// 
+    /// Backrank id should be in the range 0..=959 and uniquely determines
+    /// the backrank position according to the algorithm defined here:
+    /// https://en.wikipedia.org/wiki/Fischer_random_chess_numbering_scheme
+    fn new(id: usize) -> Self {
+        debug_assert!(id < 960);
+        let mut n = id % 960;
+        let mut extract = |size: usize| {
+            let result = n % size;
+            n /= size;
+            result
+        };
+        let mut pieces = [Pawn; 8];
+
+        // place bishops on different colored squares
+        let mut bishops = [
+            File::from_index(extract(4)*2+1), // light square
+            File::from_index(extract(4)*2),   // dark square
+        ];
+        bishops.sort();
+        pieces[bishops[0] as usize] = Bishop;
+        pieces[bishops[1] as usize] = Bishop;
+
+        let mut place = |piece: Piece, mut skip_count: usize| {
+            #[allow(clippy::needless_range_loop)]
+            for i in 0..8 {
+                if pieces[i] == Pawn {
+                    if skip_count == 0 {
+                        pieces[i] = piece;
+                        return File::from_index(i);
+                    }
+                    skip_count -= 1;
+                }
+            }
+            unreachable!()
+        };
+
+        // place queen on one of 6 remaining empty slots
+        let queen = place(Queen, extract(6));
+
+        // place knights on two of 5 remaining empty slots
+        const SKIP_TABLE: [(usize, usize); 10] = [
+            (0, 0), (0, 1), (0, 2), (0, 3),
+            (1, 1), (1, 2), (1, 3),
+            (2, 2), (2, 3),
+            (3, 3),
+        ];
+        let (skip1, skip2) = SKIP_TABLE[extract(10)];
+        let knights = [
+            place(Knight, skip1), 
+            place(Knight, skip2), 
+        ];
+
+        // place rooks on first and third of 3 empty slots
+        let rooks = [
+            place(Rook, 0),
+            place(Rook, 1),
+        ];
+
+        // place king on last remaining empty slot
+        let king = place(King, 0);
+
+        Self { id: BackRankId(id % 960), pieces, king, queen, rooks, bishops, knights }
+    }
+
     /// Creates a standard back rank configuration suitable for the
     /// standard chess game.
     pub fn standard() -> Self {
-        Self {
-            pieces: [Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook],
-            king: FileE,
-            queen: FileD,
-            rooks: [FileA, FileH],
-            knights: [FileB, FileG],
-            bishops: [FileC, FileF],
-        }
+        *Self::lookup(BackRankId::STANDARD)
     }
 
     /// Creates a shuffled back rank configuration suitable for the chess
     /// variant Chess960 (aka Fischer random chess).
     pub fn shuffled() -> Self {
         *Self::lookup(BackRankId::shuffled())
-
-        // // Arrange non-bishops. The king must be placed between the rooks,
-        // // so we'll start with three rooks and then replace the middle
-        // // one with the king.
-        // let mut pieces = vec![Queen, Knight, Knight, Rook, Rook, Rook];
-        // pieces.shuffle(&mut rng);
-        // let king_index = pieces.iter().enumerate()
-        //     .filter(|&(_, &val)| val == Rook)
-        //     .map(|(i, _)| i)
-        //     .nth(1).unwrap();
-        // let _ = std::mem::replace(&mut pieces[king_index], King);
-
-        // // Insert bishops on differently colored squares
-        // let b1 = rng.gen_range(0..4usize) * 2;
-        // let b2 = rng.gen_range(0..4usize) * 2 + 1;
-        // pieces.insert(max(b1, b2), Bishop);
-        // pieces.insert(min(b1, b2), Bishop);
-        // Self::build(pieces).expect("BackRank::shuffled(): invalid back rank")
     }
 
     pub fn lookup(id: BackRankId) -> &'static BackRank {
-        &BACKRANKS[id]
-    }
-
-    /// Builds a BackRank instance from a sequence of pieces. Validates that
-    /// exactly 8 pieces are provided (1 king, 1 queen, 2 rooks, 2 bishops and 2
-    /// knights), that the bishops are on different colored squares and that the
-    /// king is between the two rooks.
-    ///
-    /// # Arguments
-    ///
-    /// * `pieces` - A sequence of `Piece` values representing the desired configuration.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing the constructed `BackRank` instance if the configuration is valid.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the provided configuration is invalid. 
-    pub fn build<I>(pieces: I) -> Result<Self> 
-    where
-        I: IntoIterator<Item=Piece>,
-    {
-        let result = Self::inner_build(pieces);
-        if let Ok(backrank) = result {
-            if !BACKRANKS.contains(&backrank) {
-                return Err(Unregistered.into());
-            }
-        }
-        result
-    }
-
-    /// Builds a BackRank instance from a sequence of pieces. Validates that
-    /// exactly 8 pieces are provided (1 king, 1 queen, 2 rooks, 2 bishops and 2
-    /// knights), that the bishops are on different colored squares and that the
-    /// king is between the two rooks.
-    ///
-    /// # Arguments
-    ///
-    /// * `pieces` - A sequence of `Piece` values representing the desired configuration.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing the constructed `BackRank` instance if the configuration is valid.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the provided configuration is invalid. 
-    fn inner_build<I>(pieces: I) -> Result<Self> 
-    where
-        I: IntoIterator<Item=Piece>,
-    {
-        let pieces = into_array(pieces)?;
-        let mut map: HashMap<Piece, Vec<File>> = HashMap::new();
-        for file in File::iter() {
-            map.entry(pieces[file.to_index()])
-                .or_insert_with(Vec::new)
-                .push(file);
-        }
-        let king = into_item(map.remove(&King).unwrap_or_default())?;
-        let queen = into_item(map.remove(&Queen).unwrap_or_default())?;
-        let rooks = into_array(map.remove(&Rook).unwrap_or_default())?;
-        let bishops = into_array(map.remove(&Bishop).unwrap_or_default())?;
-        let knights = into_array(map.remove(&Knight).unwrap_or_default())?;
-
-        if ((bishops[0] as usize) & 0x1) == ((bishops[1] as usize) & 0x1) {
-            return Err(MisplacedBishop.into());
-        }
-        if (king as usize) < (rooks[0] as usize) || (king as usize) > (rooks[1] as usize) {
-            return Err(MisplacedKing.into())
-        }
-        Ok(Self {pieces, king, queen, rooks, bishops, knights})
+        &BACKRANKS[id.0]
     }
 
     pub fn id(&self) -> BackRankId {
-        // Safety: all possible backranks have been registered in `BACKRANKS`
-        debug_assert!(BACKRANKS.contains(self));
-        BACKRANKS[self]
+        self.id
     }
     pub fn king(&self) -> File {
         self.king
@@ -293,229 +260,12 @@ impl IndexMut<File> for BackRank {
     }
 }
 
-/// Converts an iterator of values into an array of size `N`.
-///
-/// # Arguments
-///
-/// * `values` - An iterator of values to be converted into an array.
-///
-/// # Returns
-///
-/// A `Result` containing the array if `values` contains exactly `N` items
-///
-/// # Errors
-///
-/// Returns an error if `values` does not contain exactly `N` items.
-fn into_array<T, I, const N: usize>(values: I) -> Result<[T; N]> 
-where
-    I: IntoIterator<Item=T>,
-{
-    let vec: Vec<T> = values.into_iter().collect();
-    vec.try_into().map_err(|_| ArgError.into())
-}
-
-/// Converts an iterator of values into a single item.
-///
-/// # Arguments
-///
-/// * `values` - An iterator of values to be converted into a single item.
-///
-/// # Returns
-///
-/// A `Result` containing the single item if `values` contains exactly one item.
-///
-/// # Errors
-///
-/// Returns an error if `values` does not contain exactly one item.
-fn into_item<T: Copy, I>(values: I) -> Result<T> 
-where
-    I: IntoIterator<Item=T>,
-{
-    let array: [T; 1] = into_array(values)?;
-    Ok(array[0])
-}
-
-struct BackRankMatrix {
-    ids: HashMap<[Piece; 8], BackRankId>,
-    backranks: Vec<BackRank>,
-}
-
-impl BackRankMatrix {
-    fn contains(&self, backrank: &BackRank) -> bool {
-        self.ids.contains_key(&backrank.pieces)
+static BACKRANKS: Lazy<Vec<BackRank>> = Lazy::new(|| {
+    let mut result = Vec::new();
+    for id in 0..960 {
+        result.push(BackRank::new(id));
     }
-}
-
-impl Index<BackRankId> for BackRankMatrix {
-    type Output = BackRank;
-    fn index(&self, id: BackRankId) -> &Self::Output {
-        // Safety: all possible BackRank instances correspond to an
-        // entry in this matrix
-        // self.ids.get(&backrank.pieces).unwrap()
-        &self.backranks[id.0]
-    }
-}
-impl Index<&BackRank> for BackRankMatrix {
-    type Output = BackRankId;
-    fn index(&self, backrank: &BackRank) -> &Self::Output {
-        // Safety: all possible BackRankId instances correspond to an 
-        // entry in this matrix
-        &self.ids[&backrank.pieces]
-    }
-}
-
-static BACKRANKS: Lazy<BackRankMatrix> = Lazy::new(|| {
-    const MATRIX: [[Piece; 5]; 30] = [
-        [Queen, Bishop, Bishop, Knight, Knight, ],  // xBBxx 16 excluded
-        [Queen, Bishop, Knight, Bishop, Knight, ],  // xBxBx 32 excluded
-        [Queen, Bishop, Knight, Knight, Bishop, ],  // xBxxB 28 excluded
-        [Queen, Knight, Bishop, Knight, Bishop, ],  // xxBxB 32 excluded
-        [Queen, Knight, Bishop, Bishop, Knight, ],  // xxBBx 16 excluded
-        [Queen, Knight, Knight, Bishop, Bishop, ],  // xxxBB 16 excluded
-
-        [Bishop, Queen, Bishop, Knight, Knight, ],  // BxBxx 32 excluded
-        [Bishop, Queen, Knight, Bishop, Knight, ],  // BxxBx 28 excluded
-        [Bishop, Queen, Knight, Knight, Bishop, ],  // BxxxB 24 excluded
-        [Knight, Queen, Bishop, Knight, Bishop, ],  // xxBxB 32 excluded
-        [Knight, Queen, Bishop, Bishop, Knight, ],  // xxBBx 16 excluded
-        [Knight, Queen, Knight, Bishop, Bishop, ],  // xxxBB 16 excluded
-
-        [Bishop, Bishop, Queen, Knight, Knight, ],  // BBxxx 16 excluded
-        [Bishop, Knight, Queen, Bishop, Knight, ],  // BxxBx 28 excluded
-        [Bishop, Knight, Queen, Knight, Bishop, ],  // BxxxB 24 excluded
-        [Knight, Bishop, Queen, Knight, Bishop, ],  // xBxxB 28 excluded
-        [Knight, Bishop, Queen, Bishop, Knight, ],  // xBxBx 32 excluded
-        [Knight, Knight, Queen, Bishop, Bishop, ],  // xxxBB 16 excluded
-
-        [Bishop, Bishop, Knight, Queen, Knight, ],  // BBxxx 16 excluded
-        [Bishop, Knight, Bishop, Queen, Knight, ],  // BxBxx 32 excluded
-        [Bishop, Knight, Knight, Queen, Bishop, ],  // BxxxB 24 excluded
-        [Knight, Bishop, Knight, Queen, Bishop, ],  // xBxxB 28 excluded
-        [Knight, Bishop, Bishop, Queen, Knight, ],  // xBBxx 16 excluded
-        [Knight, Knight, Bishop, Queen, Bishop, ],  // xxBxB 32 excluded
-
-        [Bishop, Bishop, Knight, Knight, Queen, ],  // BBxxx 16 excluded
-        [Bishop, Knight, Bishop, Knight, Queen, ],  // BxBxx 32 excluded
-        [Bishop, Knight, Knight, Bishop, Queen, ],  // BxxBx 28 excluded
-        [Knight, Bishop, Knight, Bishop, Queen, ],  // xBxBx 32 excluded
-        [Knight, Bishop, Bishop, Knight, Queen, ],  // xBBxx 16 excluded
-        [Knight, Knight, Bishop, Bishop, Queen, ],  // xxBBx 16 excluded
-    ];
-
-    const SPLITS: [[usize; 4]; 56] = [
-        [5, 0, 0, 0, ],
-        [4, 1, 0, 0, ],
-        [4, 0, 1, 0, ],
-        [4, 0, 0, 1, ],
-        // 4
-        [3, 2, 0, 0, ],
-        [3, 1, 1, 0, ],
-        [3, 1, 0, 1, ],
-        [3, 0, 2, 0, ],
-        // 8
-        [3, 0, 1, 1, ],
-        [3, 0, 0, 2, ],
-        [2, 3, 0, 0, ],
-        [2, 2, 1, 0, ],
-        // 12
-        [2, 2, 0, 1, ],
-        [2, 1, 2, 0, ],
-        [2, 1, 1, 1, ],
-        [2, 1, 0, 2, ],
-        // 16
-        [2, 0, 3, 0, ],
-        [2, 0, 2, 1, ],
-        [2, 0, 1, 2, ],
-        [2, 0, 0, 3, ],
-        // 20
-        [1, 4, 0, 0, ],
-        [1, 3, 1, 0, ],
-        [1, 3, 0, 1, ],
-        [1, 2, 2, 0, ],
-        // 24
-        [1, 2, 1, 1, ],
-        [1, 2, 0, 2, ],
-        [1, 1, 3, 0, ],
-        [1, 1, 2, 1, ],
-        // 28
-        [1, 1, 1, 2, ],
-        [1, 1, 0, 3, ],
-        [1, 0, 4, 0, ],
-        [1, 0, 3, 1, ],
-        // 32
-        [1, 0, 2, 2, ],
-        [1, 0, 1, 3, ],
-        [1, 0, 0, 4, ],
-        [0, 5, 0, 0, ],
-        // 36
-        [0, 4, 1, 0, ],
-        [0, 4, 0, 1, ],
-        [0, 3, 2, 0, ],
-        [0, 3, 1, 1, ],
-        // 40
-        [0, 3, 0, 2, ],
-        [0, 2, 3, 0, ],
-        [0, 2, 2, 1, ],
-        [0, 2, 1, 2, ],
-        // 44
-        [0, 2, 0, 3, ],
-        [0, 1, 4, 0, ],
-        [0, 1, 3, 1, ],
-        [0, 1, 2, 2, ],
-        // 48
-        [0, 1, 1, 3, ],
-        [0, 1, 0, 4, ],
-        [0, 0, 5, 0, ],
-        [0, 0, 4, 1, ],
-        // 52
-        [0, 0, 3, 2, ],
-        [0, 0, 2, 3, ],
-        [0, 0, 1, 4, ],
-        [0, 0, 0, 5, ],
-        // 56
-    ];
-
-    let mut backranks = Vec::new();
-    let mut ids = HashMap::new();
-
-    let standard = BackRank::standard();
-    backranks.push(standard);   // standard board is at index 0
-    ids.insert(standard.pieces, BackRankId(0));
-
-    for pieces in MATRIX {
-        for split in SPLITS {
-            let mut start = 0;
-            let mut buckets = vec![];
-            for count in split.iter() {
-                let end = start + count;
-                // eprintln!("{:?} - {:?} - {:?}..{:?}", pieces, split, start, end);
-                buckets.push(pieces[start..end].to_vec());
-                start += count;
-        }
-            let mut backrank_pieces = Vec::new();
-            backrank_pieces.append(&mut buckets[0]);
-            backrank_pieces.push(Rook);
-            backrank_pieces.append(&mut buckets[1]);
-            backrank_pieces.push(King);
-            backrank_pieces.append(&mut buckets[2]);
-            backrank_pieces.push(Rook);
-            backrank_pieces.append(&mut buckets[3]);
-            debug_assert!(backrank_pieces.len() == 8);
-
-            if let Ok(backrank) = BackRank::inner_build(backrank_pieces) {
-                // already placed standard board at index 0
-                if backrank != standard {
-                    backranks.push(backrank);
-                    ids.insert(backrank.pieces, BackRankId(ids.len()));
-                }
-            }
-        }
-    }
-    debug_assert!(backranks.len() == 960);
-    BackRankMatrix {
-        ids,
-        backranks,
-    }
+    result
 });
 
 #[cfg(test)]
@@ -524,10 +274,11 @@ mod tests {
     use std::collections::HashSet;
 
     use super::*;
+    use super::File::*;
 
     #[test]
-    fn test_backrank_id_0_is_standard() {
-        let index: usize = 0;
+    fn test_backrank_id_518_is_standard() {
+        let index: usize = 518;
         assert!(BackRankId::try_from(index).is_ok());
         let backrank: &BackRank = BackRankId::try_from(index).unwrap().into();
         assert_eq!(backrank.king(), FileE);
