@@ -12,18 +12,18 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-use std::fmt::Display;
-use rand::{thread_rng, Rng};
-use thiserror::Error;
 use anyhow::Result;
-use std::ops::{Index, IndexMut};
 use once_cell::sync::Lazy;
-use std::hash::{Hash, Hasher};
+use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
+use std::fmt::Display;
+use std::hash::{Hash, Hasher};
+use std::ops::{Index, IndexMut};
+use thiserror::Error;
 
-use super::square::File;
 use super::material::Piece;
-use Piece::{King, Queen, Rook, Bishop, Knight, Pawn};
+use super::square::File;
+use Piece::{Bishop, King, Knight, Pawn, Queen, Rook};
 
 #[derive(Error, Debug, Serialize, Deserialize)]
 pub enum BackRankError {
@@ -85,7 +85,7 @@ pub trait BackRanks: AsRef<BackRank> {
         backrank.pieces
     }
     #[inline]
-    fn br_king_file(&self) -> File{
+    fn br_king_file(&self) -> File {
         let backrank: &BackRank = self.as_ref();
         backrank.king
     }
@@ -110,7 +110,6 @@ pub trait BackRanks: AsRef<BackRank> {
         backrank.knights
     }
 }
-
 
 /// Represents a configuration of pieces on a chessboard's back rank.
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq)]
@@ -146,7 +145,7 @@ impl BackRanks for BackRank {}
 
 impl BackRank {
     /// Creates a new back rank configuration with provided backrank id.
-    /// 
+    ///
     /// Backrank id should be in the range 0..=959 and uniquely determines
     /// the backrank position according to the algorithm defined here:
     /// https://en.wikipedia.org/wiki/Fischer_random_chess_numbering_scheme
@@ -162,8 +161,8 @@ impl BackRank {
 
         // place bishops on different colored squares
         let mut bishops = [
-            File::from_index(extract(4)*2+1), // light square
-            File::from_index(extract(4)*2),   // dark square
+            File::from_index(extract(4) * 2 + 1), // light square
+            File::from_index(extract(4) * 2),     // dark square
         ];
         bishops.sort();
         pieces[bishops[0] as usize] = Bishop;
@@ -188,27 +187,35 @@ impl BackRank {
 
         // place knights on two of 5 remaining empty slots
         const SKIP_TABLE: [(usize, usize); 10] = [
-            (0, 0), (0, 1), (0, 2), (0, 3),
-            (1, 1), (1, 2), (1, 3),
-            (2, 2), (2, 3),
+            (0, 0),
+            (0, 1),
+            (0, 2),
+            (0, 3),
+            (1, 1),
+            (1, 2),
+            (1, 3),
+            (2, 2),
+            (2, 3),
             (3, 3),
         ];
         let (skip1, skip2) = SKIP_TABLE[extract(10)];
-        let knights = [
-            place(Knight, skip1), 
-            place(Knight, skip2), 
-        ];
+        let knights = [place(Knight, skip1), place(Knight, skip2)];
 
         // place rooks on first and third of 3 empty slots
-        let rooks = [
-            place(Rook, 0),
-            place(Rook, 1),
-        ];
+        let rooks = [place(Rook, 0), place(Rook, 1)];
 
         // place king on last remaining empty slot
         let king = place(King, 0);
 
-        Self { id: BackRankId(id % 960), pieces, king, queen, rooks, bishops, knights }
+        Self {
+            id: BackRankId(id % 960),
+            pieces,
+            king,
+            queen,
+            rooks,
+            bishops,
+            knights,
+        }
     }
 
     /// Creates a standard back rank configuration suitable for the
@@ -273,8 +280,8 @@ mod tests {
 
     use std::collections::HashSet;
 
-    use super::*;
     use super::File::*;
+    use super::*;
 
     #[test]
     fn test_backrank_id_518_is_standard() {
@@ -301,8 +308,7 @@ mod tests {
     fn test_backranks_are_unique() {
         let mut visited = HashSet::new();
         for index in 0..960usize {
-            let id = BackRankId::try_from(index)
-                .expect("index should be less than 960");
+            let id = BackRankId::try_from(index).expect("index should be less than 960");
             let backrank: &BackRank = id.into();
             assert!(!visited.contains(backrank));
             visited.insert(backrank);

@@ -12,12 +12,12 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-use strum_macros::EnumIter;
-use strum::IntoEnumIterator;
-use std::fmt;
-use std::ops::{Add, Sub, Not, BitOr, BitAnd, BitOrAssign, BitAndAssign, Deref};
-use std::ops::{Index, IndexMut};
 use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::ops::{Add, BitAnd, BitAndAssign, BitOr, BitOrAssign, Deref, Not, Sub};
+use std::ops::{Index, IndexMut};
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
 
 use super::material::Color;
 
@@ -25,25 +25,76 @@ use Color::*;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, EnumIter)]
 pub enum Square {
-    A8, B8, C8, D8, E8, F8, G8, H8,
-    A7, B7, C7, D7, E7, F7, G7, H7,
-    A6, B6, C6, D6, E6, F6, G6, H6,
-    A5, B5, C5, D5, E5, F5, G5, H5,
-    A4, B4, C4, D4, E4, F4, G4, H4,
-    A3, B3, C3, D3, E3, F3, G3, H3,
-    A2, B2, C2, D2, E2, F2, G2, H2,
-    A1, B1, C1, D1, E1, F1, G1, H1,
+    A8,
+    B8,
+    C8,
+    D8,
+    E8,
+    F8,
+    G8,
+    H8,
+    A7,
+    B7,
+    C7,
+    D7,
+    E7,
+    F7,
+    G7,
+    H7,
+    A6,
+    B6,
+    C6,
+    D6,
+    E6,
+    F6,
+    G6,
+    H6,
+    A5,
+    B5,
+    C5,
+    D5,
+    E5,
+    F5,
+    G5,
+    H5,
+    A4,
+    B4,
+    C4,
+    D4,
+    E4,
+    F4,
+    G4,
+    H4,
+    A3,
+    B3,
+    C3,
+    D3,
+    E3,
+    F3,
+    G3,
+    H3,
+    A2,
+    B2,
+    C2,
+    D2,
+    E2,
+    F2,
+    G2,
+    H2,
+    A1,
+    B1,
+    C1,
+    D1,
+    E1,
+    F1,
+    G1,
+    H1,
 }
 
 use Square::{
-    A8, B8, C8, D8, E8, F8, G8, H8,
-    A7, B7, C7, D7, E7, F7, G7, H7,
-    A6, B6, C6, D6, E6, F6, G6, H6,
-    A5, B5, C5, D5, E5, F5, G5, H5,
-    A4, B4, C4, D4, E4, F4, G4, H4,
-    A3, B3, C3, D3, E3, F3, G3, H3,
-    A2, B2, C2, D2, E2, F2, G2, H2,
-    A1, B1, C1, D1, E1, F1, G1, H1,
+    A1, A2, A3, A4, A5, A6, A7, A8, B1, B2, B3, B4, B5, B6, B7, B8, C1, C2, C3, C4, C5, C6, C7, C8,
+    D1, D2, D3, D4, D5, D6, D7, D8, E1, E2, E3, E4, E5, E6, E7, E8, F1, F2, F3, F4, F5, F6, F7, F8,
+    G1, G2, G3, G4, G5, G6, G7, G8, H1, H2, H3, H4, H5, H6, H7, H8,
 };
 
 impl Square {
@@ -55,14 +106,9 @@ impl Square {
     #[inline]
     pub const fn from_index(index: usize) -> Self {
         const VALUES: [Square; 64] = [
-            A8, B8, C8, D8, E8, F8, G8, H8,
-            A7, B7, C7, D7, E7, F7, G7, H7,
-            A6, B6, C6, D6, E6, F6, G6, H6,
-            A5, B5, C5, D5, E5, F5, G5, H5,
-            A4, B4, C4, D4, E4, F4, G4, H4,
-            A3, B3, C3, D3, E3, F3, G3, H3,
-            A2, B2, C2, D2, E2, F2, G2, H2,
-            A1, B1, C1, D1, E1, F1, G1, H1,
+            A8, B8, C8, D8, E8, F8, G8, H8, A7, B7, C7, D7, E7, F7, G7, H7, A6, B6, C6, D6, E6, F6,
+            G6, H6, A5, B5, C5, D5, E5, F5, G5, H5, A4, B4, C4, D4, E4, F4, G4, H4, A3, B3, C3, D3,
+            E3, F3, G3, H3, A2, B2, C2, D2, E2, F2, G2, H2, A1, B1, C1, D1, E1, F1, G1, H1,
         ];
         debug_assert!(index < 64);
         VALUES[index]
@@ -70,7 +116,7 @@ impl Square {
     #[inline]
     pub fn from_string(name: &str) -> Self {
         Self::try_from_string(name).expect("Square::from_string: invalid format")
-    }    
+    }
     #[inline]
     pub const fn from_chars(f: char, r: char) -> Self {
         Self::new(File::from_char(f), Rank::from_char(r))
@@ -88,13 +134,13 @@ impl Square {
         let rank = Rank::try_from_char(r)?;
         Some(Self::new(file, rank))
     }
-    
+
     #[inline]
-    pub const fn to_index(&self) -> usize { 
+    pub const fn to_index(&self) -> usize {
         *self as usize
     }
     #[inline]
-    pub const fn to_mask(&self) -> Mask { 
+    pub const fn to_mask(&self) -> Mask {
         Mask::new(0x1 << (63 - self.to_index()))
     }
     #[inline]
@@ -113,9 +159,9 @@ impl Square {
     pub const fn rank(&self) -> Rank {
         Rank::from_index(self.rank_index())
     }
- }
+}
 
- impl fmt::Display for Square {
+impl fmt::Display for Square {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "({}{})", self.file(), self.rank())
     }
@@ -127,28 +173,33 @@ impl From<Square> for usize {
     }
 }
 
- #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIter)]
+#[derive(
+    Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIter,
+)]
 pub enum File {
-    FileA, FileB, FileC, FileD, FileE, FileF, FileG, FileH,
+    FileA,
+    FileB,
+    FileC,
+    FileD,
+    FileE,
+    FileF,
+    FileG,
+    FileH,
 }
 
-use File::{
-    FileA, FileB, FileC, FileD, FileE, FileF, FileG, FileH,
-};
+use File::{FileA, FileB, FileC, FileD, FileE, FileF, FileG, FileH};
 
 impl File {
     #[inline]
     pub const fn from_index(index: usize) -> Self {
-        const VALUES: [File; 8] = [
-            FileA, FileB, FileC, FileD, FileE, FileF, FileG, FileH,
-        ];
+        const VALUES: [File; 8] = [FileA, FileB, FileC, FileD, FileE, FileF, FileG, FileH];
         debug_assert!(index < 8);
         VALUES[index]
     }
     #[inline]
     pub fn from_string(name: &str) -> Self {
         Self::from_char(name.chars().next().expect("input string too short"))
-    }    
+    }
     #[inline]
     pub const fn from_char(c: char) -> Self {
         Self::from_index((c as usize) - ('a' as usize))
@@ -173,15 +224,15 @@ impl File {
     }
 
     #[inline]
-    pub const fn to_index(&self) -> usize { 
-        *self as usize 
+    pub const fn to_index(&self) -> usize {
+        *self as usize
     }
     #[inline]
     pub const fn to_mask(&self) -> Mask {
         Mask::new(u64::from_be_bytes([0x1 << (7 - self.to_index()); 8]))
     }
     #[inline]
-    pub fn range(start: File, end: File) -> impl Iterator<Item=File> {
+    pub fn range(start: File, end: File) -> impl Iterator<Item = File> {
         let start_index = start.to_index();
         let end_index = end.to_index();
         (start_index..end_index).map(File::from_index)
@@ -212,15 +263,21 @@ impl Sub for File {
     }
 }
 
-
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIter)]
+#[derive(
+    Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIter,
+)]
 pub enum Rank {
-    Rank8, Rank7, Rank6, Rank5, Rank4, Rank3, Rank2, Rank1,
+    Rank8,
+    Rank7,
+    Rank6,
+    Rank5,
+    Rank4,
+    Rank3,
+    Rank2,
+    Rank1,
 }
 
-use Rank::{
-    Rank8, Rank7, Rank6, Rank5, Rank4, Rank3, Rank2, Rank1,
-};
+use Rank::{Rank1, Rank2, Rank3, Rank4, Rank5, Rank6, Rank7, Rank8};
 
 impl Rank {
     #[inline]
@@ -237,16 +294,14 @@ impl Rank {
     }
     #[inline]
     pub const fn from_index(index: usize) -> Self {
-        const VALUES: [Rank; 8] = [
-            Rank8, Rank7, Rank6, Rank5, Rank4, Rank3, Rank2, Rank1,
-        ];
+        const VALUES: [Rank; 8] = [Rank8, Rank7, Rank6, Rank5, Rank4, Rank3, Rank2, Rank1];
         debug_assert!(index < 8);
         VALUES[index]
     }
     #[inline]
     pub fn from_string(name: &str) -> Self {
         Self::from_char(name.chars().next().expect("input string too short"))
-    }    
+    }
     #[inline]
     pub const fn from_char(c: char) -> Self {
         Self::from_index(8 - ((c as usize) - ('0' as usize)))
@@ -270,8 +325,8 @@ impl Rank {
         }
     }
     #[inline]
-    pub const fn to_index(&self) -> usize { 
-        *self as usize 
+    pub const fn to_index(&self) -> usize {
+        *self as usize
     }
     #[inline]
     pub const fn to_mask(&self) -> Mask {
@@ -303,7 +358,6 @@ impl Sub for Rank {
     }
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Offset {
     pub x: isize,
@@ -312,7 +366,7 @@ pub struct Offset {
 
 impl Offset {
     pub const fn new(x: isize, y: isize) -> Self {
-        Self {x, y}
+        Self { x, y }
     }
 
     pub fn to_unit(self) -> Option<Self> {
@@ -321,10 +375,8 @@ impl Offset {
             (x, y) if x == 0 || y == 0 || x.abs() == y.abs() => (x.signum(), y.signum()),
             _ => return None,
         };
-        Some(Self{x, y})
+        Some(Self { x, y })
     }
-
-
 }
 
 impl Add<Offset> for Square {
@@ -389,16 +441,7 @@ pub enum Direction {
     DownRight,
 }
 
-use Direction::{
-    UpLeft,
-    Up,
-    UpRight,
-    Left,
-    Right,
-    DownLeft,
-    Down,
-    DownRight,
-};
+use Direction::{Down, DownLeft, DownRight, Left, Right, Up, UpLeft, UpRight};
 
 impl Direction {
     #[inline]
@@ -409,10 +452,10 @@ impl Direction {
     pub fn is_diagonal(&self) -> bool {
         matches!(*self, UpLeft | UpRight | DownLeft | DownRight)
     }
-    pub fn horizontals() -> impl Iterator<Item=Self> {
+    pub fn horizontals() -> impl Iterator<Item = Self> {
         [Up, Left, Right, Down].into_iter()
     }
-    pub fn diagonals() -> impl Iterator<Item=Self> {
+    pub fn diagonals() -> impl Iterator<Item = Self> {
         [UpLeft, UpRight, DownLeft, DownRight].into_iter()
     }
 }
@@ -440,7 +483,6 @@ impl Add<Direction> for Square {
     }
 }
 
-
 #[derive(Clone, Serialize, Deserialize, Copy, PartialEq, Eq, Hash, Default)]
 pub struct Mask(u64);
 
@@ -460,11 +502,12 @@ impl Mask {
         Self(!0)
     }
 
-    pub fn from_squares<I>(squares: I) -> Self 
+    pub fn from_squares<I>(squares: I) -> Self
     where
-        I: IntoIterator<Item=Square>,
+        I: IntoIterator<Item = Square>,
     {
-        squares.into_iter()
+        squares
+            .into_iter()
             .map(|square| square.to_mask())
             .reduce(|m1, m2| m1 | m2)
             .unwrap_or_default()
@@ -474,47 +517,47 @@ impl Mask {
     pub(crate) const fn inner(&self) -> u64 {
         self.0
     }
-    
+
     #[inline]
     pub const fn is_empty(&self) -> bool {
         self.0 == 0
     }
-    
+
     #[inline]
     pub const fn len(&self) -> usize {
         self.0.count_ones() as usize
     }
-    
+
     #[inline]
     pub const fn get(&self, square: Square) -> bool {
         let mask = 0x1 << (63 - square.to_index());
         (self.0 & mask) != 0
     }
-    
+
     #[inline]
     pub fn set(&mut self, square: Square) {
         let mask = 0x1 << (63 - square.to_index());
         self.0 |= mask;
     }
-    
+
     #[inline]
     pub fn reset(&mut self, square: Square) {
         let mask = 0x1 << (63 - square.to_index());
         self.0 &= !mask;
     }
-    
+
     #[inline]
     pub fn set_if(&mut self, square: Square, cond: bool) {
         let mask = (cond as u64) << (63 - square.to_index());
         self.0 |= mask;
     }
-    
+
     #[inline]
     pub fn reset_if(&mut self, square: Square, cond: bool) {
         let mask = (cond as u64) << (63 - square.to_index());
         self.0 &= !mask;
     }
-    
+
     #[inline]
     pub const fn contains(&self, square: Square) -> bool {
         (self.0 & square.to_mask().0) != 0
@@ -523,7 +566,6 @@ impl Mask {
     pub fn iter(&self) -> MaskIter {
         MaskIter(self.0)
     }
-
 }
 
 impl fmt::Debug for Mask {
@@ -597,7 +639,7 @@ impl BitOrAssign<Square> for Mask {
 
 impl BitAnd for Mask {
     type Output = Self;
-    
+
     fn bitand(self, rhs: Self) -> Self {
         Self(self.0 & rhs.0)
     }
@@ -611,7 +653,7 @@ impl BitAndAssign for Mask {
 
 impl BitAnd<Square> for Mask {
     type Output = Self;
-    
+
     fn bitand(self, rhs: Square) -> Self {
         Self(self.0 & rhs.to_mask().0)
     }
@@ -630,7 +672,7 @@ impl MaskIter {
     pub const fn is_empty(&self) -> bool {
         self.0 == 0
     }
-    pub const  fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.0.count_ones() as usize
     }
     pub const fn after(self, square: Square) -> Self {
@@ -639,7 +681,7 @@ impl MaskIter {
     }
     pub const fn before(self, square: Square) -> Self {
         let coord_mask = square.to_mask().inner();
-        let mask = !(coord_mask | (coord_mask -1));
+        let mask = !(coord_mask | (coord_mask - 1));
         Self(self.0 & mask)
     }
 }
@@ -658,7 +700,6 @@ impl Iterator for MaskIter {
 }
 
 impl DoubleEndedIterator for MaskIter {
-
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.0 != 0 {
             let square = Square::from_index(63 - self.0.trailing_zeros() as usize);

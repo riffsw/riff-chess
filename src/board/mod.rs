@@ -12,13 +12,12 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-
-//! Chess board supporting standard chess and Chess960 
-//! 
+//! Chess board supporting standard chess and Chess960
+//!
 //! A _board_ represents the state of a chess board and provides
 //! the core mechanisms to play or to review a game of chess. The
 //! following features are supported:
-//! 
+//!
 //! [x] Standard chess rules
 //! [x] Chess960 rules
 //! [x] Track and automatically apply (or discard) pre-moves
@@ -33,52 +32,52 @@
 //! [ ] Take backs (still need to look into configuration options)
 //! [ ] Recognize some dead positions (unlikely to implement this fully)
 //! [ ] Other chess variants such as Crazyhouse, 3-Check, etc.
-//! 
+//!
 //! Some of the key abstractions include:
-//! 
+//!
 //! * A `Square` represents the coordinates for a single square
-//!   on an 8-by-8 board. The 8 rows and 8 columns on a board 
+//!   on an 8-by-8 board. The 8 rows and 8 columns on a board
 //!   are represented by `Rank` (`Rank1` .. `Rank8`) and `File`
 //!   ('FileA' .. 'FileH') respectively. Each square is uniquely
 //!   identified by a rank and a file and is named using the letter of
 //!   the file followed by the number of the rank (e.g. `A1` .. `H8`).
-//! 
+//!
 //! * A `Mask` is a 64-bit (u64) value in which each bit maps to a
 //!   square on the board. Masks are useful for efficiently representing
 //!   which squares contain pawns, for instance, or which squares are
 //!   legal move destinations for a piece. Masks can be combined or
-//!   modified using bitwise `|`, `|=`, `&`, `&=` and `!` operators. 
+//!   modified using bitwise `|`, `|=`, `&`, `&=` and `!` operators.
 //!   The `iter()` method provides an efficient double-ended iterator.
-//! 
+//!
 //! * `Material` represents a piece of a specific color. A `Piece` has
 //!   six variants: `King`, `Queen`, `Rook`, `Bishop`, `Knight` and `Pawn`.
-//!   `Color` is either `White` or `Black`. Note that in order to 
-//!   support pawn promotion moves, there's another type called 
+//!   `Color` is either `White` or `Black`. Note that in order to
+//!   support pawn promotion moves, there's another type called
 //!   `Promotion` with only four variants: `Queen`, `Rook`, `Bishop`,
 //!   and `Knight`. `Piece` and `Promotion` are different types but
 //!   you can convert from one to the other using `From<Promotion>`
 //!   and `TryFrom<Piece>`.
-//! 
+//!
 //! * A `Position` holds the state of the board, including the contents
 //!   of each square, whose turn it is, how many moves have been
-//!   played, etc. There are only two public methods that modify a 
+//!   played, etc. There are only two public methods that modify a
 //!   position: `apply_move` and `apply_pre_move`. The first applies
-//!   a `LegalMove` and toggles the turn. The second updates the 
+//!   a `LegalMove` and toggles the turn. The second updates the
 //!   contents of the squares to reflect a `PreMove` but does not
-//!   toggle the turn. Note that there is no mechanism to undo or 
+//!   toggle the turn. Note that there is no mechanism to undo or
 //!   roll back a position to a previous state. That functionality
-//!   is handled by `ReviewState` which holds onto all historical 
+//!   is handled by `ReviewState` which holds onto all historical
 //!   positions (indirectly via `MoveState`).
-//! 
-//! * `MoveState` encapsulates a single position but also tracks 
+//!
+//! * `MoveState` encapsulates a single position but also tracks
 //!   the squares that are attacking or being attacked by other
 //!   squares. Ultimately `MoveState` is responsible for identfying
 //!   which moves are legal for a given position and to do this,
 //!   it must know if the king is in check or a piece is pinned.
-//!   `MoveState` implements `apply_move` and `apply_pre_move` so 
+//!   `MoveState` implements `apply_move` and `apply_pre_move` so
 //!   it can update it's own state after delegating to the
 //!   corresponding methods in its contained position.
-//! 
+//!
 //! * `ReviewState` is used to efficiently step backward or forward
 //!   through the historical positions in a game. It contains a list
 //!   of `MoveState`s and supports skipping directly to the starting
@@ -89,31 +88,31 @@
 //!   `PlayerBoard`. An `EngineBoard` plays both sides of a game,
 //!   applying successive moves of alternating color. It is designed
 //!   to be used by an engine or a server that receives and applies
-//!   moves from each player in turn. No pre-moves or reviewing prior 
+//!   moves from each player in turn. No pre-moves or reviewing prior
 //!   positions is allowed. A `PlayerBoard` plays one side of a game.
 //!   It holds on to `ReviewState` and tracks pre-moves (automatically
 //!   applying or discarding them after receiving an opponent's move).
-//! 
+//!
 
 use anyhow::Result;
 
 mod backrank;
 mod castling;
-mod square;
 mod material;
 mod moves;
 mod play;
 mod position;
 mod review;
+mod square;
 
 pub use backrank::*;
 pub use castling::*;
-pub use square::*;
 pub use material::*;
 pub use moves::*;
 pub use play::*;
 pub use position::*;
 pub use review::*;
+pub use square::*;
 
 pub trait Turn {
     fn turn(&self) -> Color;
@@ -129,20 +128,19 @@ pub struct Board<T> {
 impl<T> Board<T> {
     pub fn plays_white(id: Option<BackRankId>) -> PlayerBoard {
         PlayerBoard {
-            state: PlayState::plays_white(id)
+            state: PlayState::plays_white(id),
         }
     }
-    pub fn plays_black(id: Option<BackRankId>) -> PlayerBoard{
+    pub fn plays_black(id: Option<BackRankId>) -> PlayerBoard {
         PlayerBoard {
-            state: PlayState::plays_black(id)
+            state: PlayState::plays_black(id),
         }
     }
     pub fn plays_both(id: Option<BackRankId>) -> EngineBoard {
         EngineBoard {
-            state: PlayState::plays_both(id)
+            state: PlayState::plays_both(id),
         }
     }
-
 }
 
 impl<T> Turn for Board<T> {
@@ -228,7 +226,4 @@ impl ReviewMut for PlayerBoard {
     }
 }
 
-pub struct PlayerBoardToken {
-
-}
-
+pub struct PlayerBoardToken {}

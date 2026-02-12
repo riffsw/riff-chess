@@ -12,17 +12,16 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-
 use anyhow::Result;
 use std::collections::HashMap;
 use std::ops::Index;
 
-use super::backrank::{BackRank, BackRanks, BackRankId};
-use super::square::{Square, Mask};
-use super::material::{Material, Color};
-use super::moves::{LegalMove, LegalMoves, PreMoves, Move, MoveState};
-use super::position::{MoveId, Pos, Position, PositionKey, MatingMaterial};
+use super::backrank::{BackRank, BackRankId, BackRanks};
+use super::material::{Color, Material};
+use super::moves::{LegalMove, LegalMoves, Move, MoveState, PreMoves};
+use super::position::{MatingMaterial, MoveId, Pos, Position, PositionKey};
 use super::review::{Review, ReviewMut, ReviewState};
+use super::square::{Mask, Square};
 use super::Turn;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -239,7 +238,7 @@ impl PlayState<EngineMode> {
                 (TwoKnights, _) => false,
                 (_, TwoKnights) => false,
                 _ => true,
-            }
+            },
         }
     }
 }
@@ -273,25 +272,25 @@ impl PlayState<PlayerMode> {
         Ok(())
     }
 
-    /// Applies an opponent's move and, if successful, resubmits any enqueued 
-    /// pre-moves. This method is called by the client game engine after 
+    /// Applies an opponent's move and, if successful, resubmits any enqueued
+    /// pre-moves. This method is called by the client game engine after
     /// receiving opponent's move from server
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `mv` - The move to be applied
-    /// 
+    ///
     /// # Returns
     ///
     /// - `Ok(())` if the opponent's move was successfully applied.
     /// - An error otherwise.
     ///
     /// # Panics
-    /// 
+    ///
     /// Panics in debug mode if this method is invoked when it is our turn.
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// The caller must ensure that it only uses this method when it is
     /// the opponent's turn.
     pub fn submit_their_move(&mut self, mv: Move) -> Result<()> {
@@ -301,8 +300,8 @@ impl PlayState<PlayerMode> {
         self.submit_legal_move(mv);
         debug_assert!(self.our_turn());
 
-        // Resubmit pre-moves. Only the first one has a chance of being 
-        // applied. If it's applied, the remaining pre-moves will be pushed 
+        // Resubmit pre-moves. Only the first one has a chance of being
+        // applied. If it's applied, the remaining pre-moves will be pushed
         // into the queue. Otherwise, the pre-move queue remains empty.
         for mv in pre_moves {
             if self.submit_our_move(mv).is_err() {
@@ -327,7 +326,7 @@ impl PlayState<PlayerMode> {
 
     pub fn view(&self) -> &Position {
         if !self.mode.review.at_end() {
-            return self.mode.review.as_ref()
+            return self.mode.review.as_ref();
         }
         self.preview()
     }
@@ -348,6 +347,4 @@ impl PlayState<PlayerMode> {
         self.mode.preview = None;
         std::mem::take(&mut self.mode.pre_moves)
     }
-
 }
-

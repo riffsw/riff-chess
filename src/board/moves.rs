@@ -13,27 +13,27 @@
 //    limitations under the License.
 
 use anyhow::Result;
-use thiserror::Error;
 use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
-use std::ops::{BitOr, BitOrAssign};
 use std::ops::Index;
+use std::ops::{BitOr, BitOrAssign};
 use strum::IntoEnumIterator;
-use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use super::backrank::BackRank;
 use super::castling::Castling;
-use super::square::{Square, File, Rank, Mask, Direction, Offset};
-use super::material::{Piece, Color};
-use super::position::{Position, Pos, MoveId};
+use super::material::{Color, Piece};
 use super::position::{between, blocked, shielded};
-use super::position::{ALL_LINES, HORIZONTALS, DIAGONALS};
+use super::position::{MoveId, Pos, Position};
+use super::position::{ALL_LINES, DIAGONALS, HORIZONTALS};
+use super::square::{Direction, File, Mask, Offset, Rank, Square};
 use super::Turn;
 
 use Color::*;
-use Rank::*;
 use Piece::*;
+use Rank::*;
 
 #[derive(Error, Debug)]
 pub enum MoveError {
@@ -216,11 +216,9 @@ impl MoveState {
         }
         mask
     }
-
 }
 
 pub trait LegalMoves: AsRef<Position> + AsRef<MoveState> {
-
     fn validate_move(&self, mv: Move) -> Result<LegalMove> {
         let legal_moves = self.legal_moves(mv.from);
         if !legal_moves.contains(mv.to) {
@@ -291,16 +289,16 @@ pub trait LegalMoves: AsRef<Position> + AsRef<MoveState> {
     fn all_castle_moves(&self) -> MoveSet<LegalMove> {
         self.short_castle_moves() | self.long_castle_moves()
     }
-    
+
     fn short_castle_moves(&self) -> MoveSet<LegalMove> {
         let mut result = MoveSet::new();
         let state: &MoveState = self.as_ref();
         let pos: &Position = self.as_ref();
         let castling = pos.our_castling();
-        if castling.oo() && 
-            !state.is_attacked(castling.king_src()) &&
-            !state.is_lane_blocked(castling.oo_blocking_lane()) &&
-            !state.is_lane_attacked(castling.oo_attacking_lane())
+        if castling.oo()
+            && !state.is_attacked(castling.king_src())
+            && !state.is_lane_blocked(castling.oo_blocking_lane())
+            && !state.is_lane_attacked(castling.oo_attacking_lane())
         {
             let king_dest = castling.oo_king_dest();
             if !state.is_attacked(king_dest) {
@@ -317,10 +315,10 @@ pub trait LegalMoves: AsRef<Position> + AsRef<MoveState> {
         let state: &MoveState = self.as_ref();
         let pos: &Position = self.as_ref();
         let castling = pos.our_castling();
-        if castling.ooo() && 
-            !state.is_attacked(castling.king_src()) &&
-            !state.is_lane_blocked(castling.ooo_blocking_lane()) &&
-            !state.is_lane_attacked(castling.ooo_attacking_lane())
+        if castling.ooo()
+            && !state.is_attacked(castling.king_src())
+            && !state.is_lane_blocked(castling.ooo_blocking_lane())
+            && !state.is_lane_attacked(castling.ooo_attacking_lane())
         {
             let king_dest = castling.ooo_king_dest();
             if !state.is_attacked(king_dest) {
@@ -344,10 +342,7 @@ pub trait LegalMoves: AsRef<Position> + AsRef<MoveState> {
         self.all_line_moves(from, BISHOP_MOVES[from])
     }
 
-    fn all_line_moves(&self, 
-        from: Square, 
-        mut destinations: Mask) -> MoveSet<LegalMove> 
-    {
+    fn all_line_moves(&self, from: Square, mut destinations: Mask) -> MoveSet<LegalMove> {
         let mut result = MoveSet::new();
         let state: &MoveState = self.as_ref();
         if !state.is_double_check() {
@@ -377,7 +372,7 @@ pub trait LegalMoves: AsRef<Position> + AsRef<MoveState> {
     }
 
     fn all_pawn_moves(&self, from: Square) -> MoveSet<LegalMove> {
-        self.standard_pawn_moves(from) 
+        self.standard_pawn_moves(from)
             | self.double_advance_moves(from)
             | self.en_passant_moves(from)
     }
@@ -457,11 +452,9 @@ pub trait LegalMoves: AsRef<Position> + AsRef<MoveState> {
         }
         result
     }
-
 }
 
 pub trait PreMoves: AsRef<Position> {
-
     fn validate_pre_move(&self, mv: Move) -> Result<PreMove> {
         let pre_moves = self.pre_moves(mv.from);
         if !pre_moves.contains(mv.to) {
@@ -521,27 +514,27 @@ pub trait PreMoves: AsRef<Position> {
                         for dest in long_castle_targets().iter() {
                             result.insert(dest, PreMove::LongCastle);
                         }
-                    },
+                    }
                     Queen => {
                         for dest in QUEEN_MOVES[from].iter() {
                             result.insert(dest, PreMove::Standard(from, dest));
                         }
-                    },
+                    }
                     Rook => {
                         for dest in ROOK_MOVES[from].iter() {
                             result.insert(dest, PreMove::Standard(from, dest));
                         }
-                    },
+                    }
                     Bishop => {
                         for dest in BISHOP_MOVES[from].iter() {
                             result.insert(dest, PreMove::Standard(from, dest));
                         }
-                    },
+                    }
                     Knight => {
                         for dest in KNIGHT_MOVES[from].iter() {
                             result.insert(dest, PreMove::Standard(from, dest));
                         }
-                    },
+                    }
                     Pawn => {
                         let destinations = match pos.turn() {
                             White => WHITE_PAWN_MOVES[from],
@@ -550,13 +543,12 @@ pub trait PreMoves: AsRef<Position> {
                         for dest in destinations.iter() {
                             result.insert(dest, PreMove::Standard(from, dest));
                         }
-                    },
+                    }
                 };
             }
         }
         result
     }
-
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
@@ -568,7 +560,11 @@ pub struct Move {
 
 impl Move {
     pub fn new(from: Square, to: Square, promotion: Option<Promotion>) -> Self {
-        Self { from, to, promotion }
+        Self {
+            from,
+            to,
+            promotion,
+        }
     }
 }
 
@@ -603,7 +599,6 @@ impl fmt::Display for Promotion {
     }
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PreMove {
     Standard(Square, Square),
@@ -611,7 +606,6 @@ pub enum PreMove {
     ShortCastle,
     LongCastle,
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LegalMove {
@@ -649,7 +643,7 @@ impl<T: Copy> MoveSet<T> {
     pub fn contains(&self, dest: Square) -> bool {
         self.destinations.contains(dest)
     }
-    pub fn values(&self) -> impl Iterator<Item=&T> {
+    pub fn values(&self) -> impl Iterator<Item = &T> {
         self.map.values()
     }
 }
@@ -682,13 +676,10 @@ impl<T: Copy> Index<Square> for MoveSet<T> {
     }
 }
 
-
 static KING_MOVES: Lazy<[Mask; 64]> = Lazy::new(|| {
     let mut array = [Mask::default(); 64];
     for square in Square::iter() {
-        array[square] = Mask::from_squares(
-            Direction::iter().filter_map(|dir| square + dir)
-        );
+        array[square] = Mask::from_squares(Direction::iter().filter_map(|dir| square + dir));
     }
     array
 });
@@ -730,9 +721,8 @@ static KNIGHT_MOVES: Lazy<[Mask; 64]> = Lazy::new(|| {
     ];
     let mut array = [Mask::default(); 64];
     for square in Square::iter() {
-        array[square] = Mask::from_squares(
-            OFFSETS.into_iter().filter_map(|offset| square + offset)
-        );
+        array[square] =
+            Mask::from_squares(OFFSETS.into_iter().filter_map(|offset| square + offset));
     }
     array
 });
@@ -748,19 +738,18 @@ static WHITE_PAWN_MOVES: Lazy<[Mask; 64]> = Lazy::new(|| {
     array
 });
 
-
 static WHITE_SINGLE_ADVANCES: Lazy<[Mask; 64]> = Lazy::new(|| {
     const OFFSET: Offset = Offset::new(0, -1);
     let mut array = [Mask::empty(); 64];
     for rank in Rank::iter() {
         match rank {
-            Rank1 | Rank8 => {},
+            Rank1 | Rank8 => {}
             _ => {
                 for file in File::iter() {
                     let square = Square::new(file, rank);
                     array[square] = (square + OFFSET).unwrap().to_mask();
                 }
-            },
+            }
         };
     }
     array
@@ -780,10 +769,11 @@ static WHITE_PAWN_ATTACKS: Lazy<[Mask; 64]> = Lazy::new(|| {
     const OFFSETS: [Offset; 2] = [Offset::new(-1, -1), Offset::new(1, -1)];
     let mut array = [Mask::default(); 64];
     for square in Square::iter() {
-        if matches!(square.rank(), Rank1 | Rank8) { continue }
-        array[square] = Mask::from_squares(
-            OFFSETS.into_iter().filter_map(|offset| square + offset)
-        );
+        if matches!(square.rank(), Rank1 | Rank8) {
+            continue;
+        }
+        array[square] =
+            Mask::from_squares(OFFSETS.into_iter().filter_map(|offset| square + offset));
     }
     array
 });
@@ -804,13 +794,13 @@ static BLACK_SINGLE_ADVANCES: Lazy<[Mask; 64]> = Lazy::new(|| {
     let mut array = [Mask::empty(); 64];
     for rank in Rank::iter() {
         match rank {
-            Rank1 | Rank8 => {},
+            Rank1 | Rank8 => {}
             _ => {
                 for file in File::iter() {
                     let square = Square::new(file, rank);
                     array[square] = (square + OFFSET).unwrap().to_mask();
                 }
-            },
+            }
         };
     }
     array
@@ -830,10 +820,11 @@ static BLACK_PAWN_ATTACKS: Lazy<[Mask; 64]> = Lazy::new(|| {
     const OFFSETS: [Offset; 2] = [Offset::new(-1, 1), Offset::new(1, 1)];
     let mut array = [Mask::default(); 64];
     for square in Square::iter() {
-        if matches!(square.rank(), Rank1 | Rank8) { continue }
-        array[square] = Mask::from_squares(
-            OFFSETS.into_iter().filter_map(|offset| square + offset)
-        );
+        if matches!(square.rank(), Rank1 | Rank8) {
+            continue;
+        }
+        array[square] =
+            Mask::from_squares(OFFSETS.into_iter().filter_map(|offset| square + offset));
     }
     array
 });
@@ -870,8 +861,7 @@ mod tests {
     }
     #[test]
     fn test_white_pawn_advance_blocked() {
-        let position = Position::default()
-            .set_contents(E3, Some(Material::BB));
+        let position = Position::default().set_contents(E3, Some(Material::BB));
         let state = MoveState::new(position);
         let destinations = state.legal_moves(E2).destinations();
         assert!(!destinations.contains(E3));
@@ -902,8 +892,7 @@ mod tests {
     }
     #[test]
     fn test_white_pawn_double_advance_blocked() {
-        let position = Position::default()
-            .set_contents(E4, Some(Material::BB));
+        let position = Position::default().set_contents(E4, Some(Material::BB));
         let state = MoveState::new(position);
         let destinations = state.legal_moves(E2).destinations();
         assert!(destinations.contains(E3));
@@ -956,8 +945,7 @@ mod tests {
     }
     #[test]
     fn test_white_pawn_promotion() {
-        let position = Position::default()
-            .set_contents(B7, Some(Material::WP));
+        let position = Position::default().set_contents(B7, Some(Material::WP));
         let mut state = MoveState::new(position);
         let destinations = state.legal_moves(B7).destinations();
         assert!(destinations.contains(A8));
@@ -977,8 +965,7 @@ mod tests {
     }
     #[test]
     fn test_double_advance_enables_en_passant() {
-        let position = Position::default()
-            .set_contents(D4, Some(Material::BP));
+        let position = Position::default().set_contents(D4, Some(Material::BP));
         let mut state = MoveState::new(position);
         state.apply_move(LegalMove::DoubleAdvance(E2, E4));
         let destinations = state.legal_moves(D4).destinations();
@@ -1015,8 +1002,7 @@ mod tests {
     }
     #[test]
     fn test_king_moves_one_square() {
-        let position = Position::default()
-            .set_contents(E2, None);
+        let position = Position::default().set_contents(E2, None);
         let mut state = MoveState::new(position);
         let destinations = state.legal_moves(E1).destinations();
         assert!(destinations.contains(E2));
@@ -1087,8 +1073,7 @@ mod tests {
     }
     #[test]
     fn test_short_castle_lane_blocked() {
-        let position = Position::default()
-            .set_contents(G1, None);
+        let position = Position::default().set_contents(G1, None);
         let state = MoveState::new(position);
         let destinations = state.legal_moves(E1).destinations();
         assert!(!destinations.contains(G1));
@@ -1165,9 +1150,9 @@ mod tests {
     #[test]
     fn test_queen_destinations() {
         let position = Position::default()
-        .set_contents(C1, None)
-        .set_contents(C2, None)
-        .set_contents(D2, None);
+            .set_contents(C1, None)
+            .set_contents(C2, None)
+            .set_contents(D2, None);
         let state = MoveState::new(position);
         let destinations = state.legal_moves(D1).destinations();
         assert_eq!(destinations.len(), 10);
@@ -1205,8 +1190,8 @@ mod tests {
     #[test]
     fn test_rook_destinations() {
         let position = Position::default()
-        .set_contents(A2, None)
-        .set_contents(B1, None);
+            .set_contents(A2, None)
+            .set_contents(B1, None);
         let state = MoveState::new(position);
         let destinations = state.legal_moves(A1).destinations();
         assert_eq!(destinations.len(), 7);

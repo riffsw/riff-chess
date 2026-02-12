@@ -15,9 +15,9 @@
 use serde::{Deserialize, Serialize};
 
 use super::backrank::{BackRank, BackRanks};
-use super::square::{Square, File, Rank, Mask};
 use super::material::{Color, Pair};
 use super::position::between;
+use super::square::{File, Mask, Rank, Square};
 
 use File::*;
 
@@ -124,10 +124,7 @@ pub struct CastlingRightsRef<'a> {
 
 impl<'a> CastlingRightsRef<'a> {
     #[inline]
-    pub fn new(
-        rights: &'a CastlingRights, 
-        backrank: &'static BackRank
-    ) -> Self {
+    pub fn new(rights: &'a CastlingRights, backrank: &'static BackRank) -> Self {
         Self { rights, backrank }
     }
 }
@@ -150,7 +147,6 @@ impl AsRef<CastlingRights> for CastlingRightsRef<'_> {
 }
 impl Castling for CastlingRightsRef<'_> {}
 
-
 pub struct CastlingRightsMut<'a> {
     rights: &'a mut CastlingRights,
     backrank: &'static BackRank,
@@ -158,10 +154,7 @@ pub struct CastlingRightsMut<'a> {
 
 impl<'a> CastlingRightsMut<'a> {
     #[inline]
-    pub fn new(
-        rights: &'a mut CastlingRights, 
-        backrank: &'static BackRank
-    ) -> Self {
+    pub fn new(rights: &'a mut CastlingRights, backrank: &'static BackRank) -> Self {
         Self { rights, backrank }
     }
 }
@@ -185,7 +178,6 @@ impl AsMut<CastlingRights> for CastlingRightsMut<'_> {
 impl Castling for CastlingRightsMut<'_> {}
 
 impl CastlingMut for CastlingRightsMut<'_> {}
-
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CastlingRights {

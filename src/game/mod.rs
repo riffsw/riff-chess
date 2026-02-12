@@ -12,8 +12,8 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-use serde::{Deserialize, Serialize};
 use rand::{thread_rng, Rng};
+use serde::{Deserialize, Serialize};
 
 use crate::Color;
 
@@ -54,4 +54,3 @@ pub enum DrawReason {
     FiftyMoves,
     Insufficient,
 }
-

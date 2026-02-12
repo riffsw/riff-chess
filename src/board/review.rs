@@ -12,14 +12,13 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-
 use std::ops::Index;
 
 use super::backrank::BackRank;
-use super::square::Square;
-use super::material::{Material, Color};
+use super::material::{Color, Material};
 use super::moves::MoveState;
 use super::position::{MoveId, Pos, Position};
+use super::square::Square;
 use super::Turn;
 
 #[allow(clippy::len_without_is_empty)]
@@ -48,7 +47,8 @@ pub trait Review {
     }
     #[inline]
     fn current(&self) -> &Position {
-        self.get(self.offset()).expect("Review::current - out of bounds")
+        self.get(self.offset())
+            .expect("Review::current - out of bounds")
     }
 }
 
@@ -101,7 +101,6 @@ impl ReviewState {
     pub fn truncate(&mut self) {
         self.history.truncate(self.offset.value() + 1);
     }
-
 }
 
 impl Turn for ReviewState {
@@ -161,4 +160,3 @@ impl AsRef<Position> for ReviewState {
 }
 
 impl Pos for ReviewState {}
-

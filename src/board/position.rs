@@ -12,33 +12,28 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-use std::hash::Hash;
-use std::ops::{Add, AddAssign, Sub, SubAssign, Index, IndexMut};
-use std::collections::HashSet;
-use serde::ser::SerializeTuple;
-use strum::IntoEnumIterator;
 use once_cell::sync::Lazy;
+use serde::ser::SerializeTuple;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::hash::Hash;
+use std::ops::{Add, AddAssign, Index, IndexMut, Sub, SubAssign};
+use strum::IntoEnumIterator;
 
-use super::backrank::{BackRank, BackRanks, BackRankId};
+use super::backrank::{BackRank, BackRankId, BackRanks};
 use super::castling::{
-    CastlingRights, 
-    Castling, CastlingMut, 
-    CastlingRightsRef, CastlingRightsMut
+    Castling, CastlingMut, CastlingRights, CastlingRightsMut, CastlingRightsRef,
 };
-use super::square::{Square, File, Rank, Mask, Direction};
-use super::material::{Material, Piece, Color, Pair};
+use super::material::{Color, Material, Pair, Piece};
 use super::moves::{LegalMove, PreMove};
+use super::square::{Direction, File, Mask, Rank, Square};
 use super::Turn;
 
-use Rank::*;
-use Piece::*;
 use Color::*;
+use Piece::*;
+use Rank::*;
 
-#[derive(
-    Debug, Serialize, Deserialize, Clone, Copy, 
-    PartialEq, Eq, PartialOrd, Ord, Hash
-)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MoveId(u16);
 
 impl MoveId {
@@ -47,8 +42,8 @@ impl MoveId {
     #[inline]
     pub fn new(move_count: u16, turn: Color) -> Self {
         match turn {
-            White => Self(move_count*2),
-            Black => Self(move_count*2 + 1),
+            White => Self(move_count * 2),
+            Black => Self(move_count * 2 + 1),
         }
     }
     #[inline]
@@ -81,7 +76,6 @@ impl MoveId {
     pub fn prev(self) -> Self {
         Self(self.0 - 1)
     }
-
 }
 
 impl Default for MoveId {
@@ -122,7 +116,6 @@ impl<T: Into<usize>> SubAssign<T> for MoveId {
         self.0 -= rhs.into() as u16;
     }
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MatingMaterial {
@@ -254,8 +247,8 @@ impl Default for Position {
 
 impl Serialize for Position {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer 
+    where
+        S: serde::Serializer,
     {
         let mut tuple = serializer.serialize_tuple(6)?;
         tuple.serialize_element(&self.masks)?;
@@ -270,55 +263,56 @@ impl Serialize for Position {
 
 impl<'de> Deserialize<'de> for Position {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where
-            D: serde::Deserializer<'de> 
+    where
+        D: serde::Deserializer<'de>,
     {
         struct PositionVisitor;
         impl<'de> serde::de::Visitor<'de> for PositionVisitor {
-            type Value = (Masks, BackRankId, Pair<CastlingRights>, Option<Square>, MoveId, u8);
+            type Value = (
+                Masks,
+                BackRankId,
+                Pair<CastlingRights>,
+                Option<Square>,
+                MoveId,
+                u8,
+            );
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 formatter.write_str("a Position struct condensed into a 6-element tuple")
             }
             fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-                where
-                    A: serde::de::SeqAccess<'de>, 
+            where
+                A: serde::de::SeqAccess<'de>,
             {
-                let masks = seq.next_element()?.ok_or_else(
-                    || serde::de::Error::custom("Missing elements")
-                )?;
-                let backrank_id = seq.next_element()?.ok_or_else(
-                    || serde::de::Error::custom("Missing elements")
-                )?;
-                let castling = seq.next_element()?.ok_or_else(
-                    || serde::de::Error::custom("Missing elements")
-                )?;
-                let en_passant = seq.next_element()?.ok_or_else(
-                    || serde::de::Error::custom("Missing elements")
-                )?;
-                let next_move_id = seq.next_element()?.ok_or_else(
-                    || serde::de::Error::custom("Missing elements")
-                )?;
-                let moves_since_progress = seq.next_element()?.ok_or_else(
-                    || serde::de::Error::custom("Missing elements")
-                )?;
+                let masks = seq
+                    .next_element()?
+                    .ok_or_else(|| serde::de::Error::custom("Missing elements"))?;
+                let backrank_id = seq
+                    .next_element()?
+                    .ok_or_else(|| serde::de::Error::custom("Missing elements"))?;
+                let castling = seq
+                    .next_element()?
+                    .ok_or_else(|| serde::de::Error::custom("Missing elements"))?;
+                let en_passant = seq
+                    .next_element()?
+                    .ok_or_else(|| serde::de::Error::custom("Missing elements"))?;
+                let next_move_id = seq
+                    .next_element()?
+                    .ok_or_else(|| serde::de::Error::custom("Missing elements"))?;
+                let moves_since_progress = seq
+                    .next_element()?
+                    .ok_or_else(|| serde::de::Error::custom("Missing elements"))?;
                 Ok((
-                    masks, 
-                    backrank_id, 
-                    castling, 
-                    en_passant, 
-                    next_move_id, 
-                    moves_since_progress
+                    masks,
+                    backrank_id,
+                    castling,
+                    en_passant,
+                    next_move_id,
+                    moves_since_progress,
                 ))
             }
         }
-        let (
-            masks, 
-            backrank_id, 
-            castling, 
-            en_passant, 
-            next_move_id, 
-            moves_since_progress
-        ) = deserializer.deserialize_tuple(7, PositionVisitor)?;
+        let (masks, backrank_id, castling, en_passant, next_move_id, moves_since_progress) =
+            deserializer.deserialize_tuple(7, PositionVisitor)?;
         let squares = (&masks).into();
         let backrank = BackRank::lookup(backrank_id);
         Ok(Position {
@@ -334,7 +328,6 @@ impl<'de> Deserialize<'de> for Position {
 }
 
 impl Position {
-
     pub fn new(backrank: &'static BackRank) -> Self {
         let position = Self {
             squares: Squares::empty(),
@@ -448,7 +441,7 @@ impl Position {
         }
         MatingMaterial::LoneKing
     }
-    
+
     pub fn apply_move(&mut self, mv: LegalMove) -> MoveId {
         self.moves_since_progress += 1;
         match mv {
@@ -461,7 +454,7 @@ impl Position {
                 if captured.is_some() || material.piece() == Pawn {
                     self.moves_since_progress = 0;
                 }
-            },
+            }
             LegalMove::EnPassant(from, to) => {
                 let material = self.remove(from).unwrap();
                 let target = Square::new(to.file(), from.rank());
@@ -469,14 +462,14 @@ impl Position {
                 self.place(to, material);
                 self.en_passant = None;
                 self.moves_since_progress = 0;
-            },
+            }
             LegalMove::DoubleAdvance(from, to) => {
                 let target = between(from, to).iter().next().unwrap();
                 let material = self.remove(from).unwrap();
                 self.place(to, material);
                 self.en_passant = Some(target);
                 self.moves_since_progress = 0;
-            },
+            }
             LegalMove::Promoting(from, to, promotion) => {
                 let mut material = self.remove(from).unwrap();
                 material.set_piece(promotion.into());
@@ -484,8 +477,7 @@ impl Position {
                 self.their_castling_mut().update(to);
                 self.en_passant = None;
                 self.moves_since_progress = 0;
-                
-            },
+            }
             LegalMove::ShortCastle => {
                 let king = self.remove(self.our_king_src()).unwrap();
                 let rook = self.remove(self.our_oo_rook_src()).unwrap();
@@ -493,7 +485,7 @@ impl Position {
                 self.place(self.our_oo_rook_dest(), rook);
                 self.our_castling_mut().clear();
                 self.en_passant = None;
-            },
+            }
             LegalMove::LongCastle => {
                 let king = self.remove(self.our_king_src()).unwrap();
                 let rook = self.remove(self.our_ooo_rook_src()).unwrap();
@@ -501,7 +493,7 @@ impl Position {
                 self.place(self.our_ooo_rook_dest(), rook);
                 self.our_castling_mut().clear();
                 self.en_passant = None;
-            },
+            }
         };
         let move_id = self.next_move_id;
         self.next_move_id = move_id.next();
@@ -517,27 +509,27 @@ impl Position {
                 self.place(to, material);
                 self.their_castling_mut().update(from);
                 self.our_castling_mut().update(to);
-            },
+            }
             PreMove::Promoting(from, to, promotion) => {
                 let mut material = self.remove(from).unwrap();
                 material.set_piece(promotion.into());
                 self.place(to, material);
                 self.our_castling_mut().update(to);
-            },
+            }
             PreMove::ShortCastle => {
                 let king = self.remove(self.their_king_src()).unwrap();
                 let rook = self.remove(self.their_oo_rook_src()).unwrap();
                 self.place(self.their_oo_king_dest(), king);
                 self.place(self.their_oo_rook_dest(), rook);
                 self.their_castling_mut().clear();
-            },
+            }
             PreMove::LongCastle => {
                 let king = self.remove(self.their_king_src()).unwrap();
                 let rook = self.remove(self.their_ooo_rook_src()).unwrap();
                 self.place(self.their_ooo_king_dest(), king);
                 self.place(self.their_ooo_rook_dest(), rook);
                 self.their_castling_mut().clear();
-            },
+            }
         }
     }
 
@@ -569,7 +561,7 @@ impl Position {
                 Knight => self.masks.knights &= mask,
                 Pawn => self.masks.pawns &= mask,
             }
-            return Some(material)
+            return Some(material);
         }
         None
     }
@@ -604,7 +596,6 @@ impl AsRef<Self> for Position {
 impl BackRanks for Position {}
 
 impl Pos for Position {}
-
 
 impl Position {
     #[inline]
@@ -664,23 +655,23 @@ impl Position {
         self.their_castling().ooo_rook_dest()
     }
     #[inline]
-    pub fn our_castling(&self) -> CastlingRightsRef {
+    pub fn our_castling(&self) -> CastlingRightsRef<'_> {
         let turn = self.turn();
         CastlingRightsRef::new(&self.castling[turn], self.backrank)
     }
     #[inline]
-    pub fn their_castling(&self) -> CastlingRightsRef {
+    pub fn their_castling(&self) -> CastlingRightsRef<'_> {
         let turn = self.turn();
         CastlingRightsRef::new(&self.castling[!turn], self.backrank)
     }
-    
+
     #[inline]
-    pub fn our_castling_mut(&mut self) -> CastlingRightsMut {
+    pub fn our_castling_mut(&mut self) -> CastlingRightsMut<'_> {
         let turn = self.turn();
         CastlingRightsMut::new(&mut self.castling[turn], self.backrank)
     }
     #[inline]
-    pub fn their_castling_mut(&mut self) -> CastlingRightsMut {
+    pub fn their_castling_mut(&mut self) -> CastlingRightsMut<'_> {
         let turn = self.turn();
         CastlingRightsMut::new(&mut self.castling[!turn], self.backrank)
     }
@@ -823,7 +814,6 @@ pub trait Pos: Turn + AsRef<Position> {
     #[inline]
     fn theirs(&self) -> Mask {
         self.occupied_by(!self.turn())
-
     }
     #[inline]
     fn horizontals(&self) -> Mask {
@@ -858,7 +848,6 @@ pub(super) fn between(from: Square, to: Square) -> Mask {
 }
 
 pub(super) static SQUARES_BETWEEN: Lazy<[Mask; 64 * 64]> = Lazy::new(|| {
-
     // Returns a mask of squares between `start` and `end` (exclusive of both)
     // if they are not equal and in a line. Otherwise returns an empty mask.
     fn squares_between(start: Square, end: Square) -> Mask {
@@ -882,7 +871,9 @@ pub(super) static SQUARES_BETWEEN: Lazy<[Mask; 64 * 64]> = Lazy::new(|| {
     for start in Square::iter() {
         let start_index = start.to_index();
         for end in Square::iter() {
-            if start == end { continue; }
+            if start == end {
+                continue;
+            }
             let end_index = end.to_index();
             let index1 = start_index * 64 + end_index;
             let index2: usize = end_index * 64 + start_index;
@@ -890,7 +881,7 @@ pub(super) static SQUARES_BETWEEN: Lazy<[Mask; 64 * 64]> = Lazy::new(|| {
                 visited.insert(index1);
                 visited.insert(index2);
                 if ALL_LINES[start_index].contains(end) {
-                    // Safety: `start` and `end` are in a line with each 
+                    // Safety: `start` and `end` are in a line with each
                     // other and are not equal
                     let mask = squares_between(start, end);
                     array[index1] = mask;
@@ -903,7 +894,6 @@ pub(super) static SQUARES_BETWEEN: Lazy<[Mask; 64 * 64]> = Lazy::new(|| {
 });
 
 pub(super) static SQUARES_SHIELDED: Lazy<[Mask; 64 * 64]> = Lazy::new(|| {
-
     // Returns a mask of squares between `end` (exclusive) and the edge of
     // the board if we draw a line from `start` through `end`. Returns `None`
     // if `start` and `end` are equal or not in a line.
@@ -924,11 +914,13 @@ pub(super) static SQUARES_SHIELDED: Lazy<[Mask; 64 * 64]> = Lazy::new(|| {
     for start in Square::iter() {
         let start_index = start.to_index();
         for end in Square::iter() {
-            if start == end { continue; }
+            if start == end {
+                continue;
+            }
             let end_index = end.to_index();
             let index = start_index * 64 + end_index;
             if ALL_LINES[start_index].contains(end) {
-                // Safety: `start` and `end` are in a line with each 
+                // Safety: `start` and `end` are in a line with each
                 // other and are not equal
                 let mask = squares_shielded(start, end);
                 array[index] = mask;
@@ -974,11 +966,7 @@ pub(super) static ALL_LINES: Lazy<[Mask; 64]> = Lazy::new(|| {
 
 #[cfg(test)]
 impl Position {
-    pub fn set_contents(
-        mut self, 
-        square: Square, 
-        value: Option<Material>
-    ) -> Self {
+    pub fn set_contents(mut self, square: Square, value: Option<Material>) -> Self {
         self.squares[square] = value;
         self.masks = (&self.squares).into();
         self
@@ -1018,7 +1006,7 @@ mod tests {
     use super::*;
     use Square::*;
 
-    #[test] 
+    #[test]
     fn test_diagonals() {
         let mask = DIAGONALS[C5];
         assert!(mask.contains(C5));
@@ -1031,7 +1019,7 @@ mod tests {
         assert!(!mask.contains(B5));
         assert!(!mask.contains(D5));
     }
-    #[test] 
+    #[test]
     fn test_horizontals() {
         let mask = HORIZONTALS[G2];
         assert!(mask.contains(G2));
@@ -1044,7 +1032,7 @@ mod tests {
         assert!(!mask.contains(F3));
         assert!(!mask.contains(H3));
     }
-    #[test] 
+    #[test]
     fn test_all_lines() {
         let mask = ALL_LINES[D3];
         assert!(mask.contains(D3));
@@ -1058,7 +1046,7 @@ mod tests {
         assert!(mask.contains(H7));
         assert!(!mask.contains(A1));
     }
-    #[test] 
+    #[test]
     fn test_between_a3_and_e3() {
         let from = A3;
         let to = E3;
@@ -1070,7 +1058,7 @@ mod tests {
         assert!(mask.contains(D3));
         assert!(!mask.contains(E3));
     }
-    #[test] 
+    #[test]
     fn test_between_c2_and_c8() {
         let from = C2;
         let to = C8;
@@ -1084,7 +1072,7 @@ mod tests {
         assert!(mask.contains(C7));
         assert!(!mask.contains(C8));
     }
-    #[test] 
+    #[test]
     fn test_between_a1_and_d4() {
         let from = A1;
         let to = D4;
@@ -1095,7 +1083,7 @@ mod tests {
         assert!(mask.contains(C3));
         assert!(!mask.contains(D4));
     }
-    #[test] 
+    #[test]
     fn test_between_h3_and_f5() {
         let from = H3;
         let to = F5;
@@ -1105,7 +1093,7 @@ mod tests {
         assert!(mask.contains(G4));
         assert!(!mask.contains(F5));
     }
-    #[test] 
+    #[test]
     fn test_between_g4_and_f5() {
         let from = G4;
         let to = F5;
@@ -1114,7 +1102,7 @@ mod tests {
         assert!(!mask.contains(G4));
         assert!(!mask.contains(F5));
     }
-    #[test] 
+    #[test]
     fn test_between_a1_and_h5() {
         let from = A1;
         let to = H5;
@@ -1123,7 +1111,7 @@ mod tests {
         assert!(!mask.contains(A1));
         assert!(!mask.contains(H5));
     }
-    #[test] 
+    #[test]
     fn test_shielded_from_a8_by_a7() {
         let from = A8;
         let to = A7;
@@ -1134,14 +1122,14 @@ mod tests {
         assert!(mask.contains(A6));
         assert!(mask.contains(A1));
     }
-    #[test] 
+    #[test]
     fn test_shielded_from_a7_by_a8() {
         let from = A7;
         let to = A8;
         let mask = shielded(from, to);
         assert_eq!(mask.len(), 0);
     }
-    #[test] 
+    #[test]
     fn test_blocked_from_a8_by_a7() {
         let from = A8;
         let to = A7;
@@ -1152,7 +1140,7 @@ mod tests {
         assert!(mask.contains(A6));
         assert!(mask.contains(A1));
     }
-    #[test] 
+    #[test]
     fn test_blocked_from_a7_by_a8() {
         let from = A7;
         let to = A8;
