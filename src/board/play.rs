@@ -13,6 +13,7 @@
 //    limitations under the License.
 
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ops::Index;
 
@@ -24,7 +25,7 @@ use super::review::{Review, ReviewMut, ReviewState};
 use super::square::{Mask, Square};
 use super::Turn;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BoardResult {
     CheckMate(Color),
     StaleMate,

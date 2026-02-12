@@ -184,12 +184,30 @@ impl PlayerBoard {
     pub fn their_turn(&self) -> bool {
         self.state.their_turn()
     }
+
+    /// Reconstruct a PlayerBoard by replaying a sequence of moves.
+    pub fn replay(id: Option<BackRankId>, color: Color, moves: &[Move]) -> Result<Self> {
+        let mut board = match color {
+            Color::White => Self::plays_white(id),
+            Color::Black => Self::plays_black(id),
+        };
+        for (i, mv) in moves.iter().enumerate() {
+            let is_white_move = i % 2 == 0;
+            if is_white_move == (color == Color::White) {
+                board.submit_our_move(*mv)?;
+            } else {
+                board.submit_their_move(*mv)?;
+            }
+        }
+        Ok(board)
+    }
 }
 
 impl EngineBoard {
     pub fn standard() -> Self {
         Self::plays_both(None)
     }
+    #[cfg(feature = "random")]
     pub fn shuffled() -> Self {
         Self::plays_both(Some(BackRankId::shuffled()))
     }
@@ -198,6 +216,14 @@ impl EngineBoard {
     }
     pub fn board_result(&self) -> Option<BoardResult> {
         self.state.board_result()
+    }
+    /// Reconstruct an EngineBoard by replaying a sequence of moves.
+    pub fn replay(id: Option<BackRankId>, moves: &[Move]) -> Result<Self> {
+        let mut board = Self::plays_both(id);
+        for mv in moves {
+            board.submit_move(*mv)?;
+        }
+        Ok(board)
     }
 }
 

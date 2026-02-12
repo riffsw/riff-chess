@@ -5,13 +5,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Test Commands
 
 ```bash
-cargo build --verbose        # Build the library
-cargo test --verbose         # Run all tests (54 tests)
-cargo test <test_name>       # Run a single test by name
-cargo test -- --nocapture    # Run tests with stdout visible
+cargo build --verbose                                            # Build with default features (includes random)
+cargo build --no-default-features                                # Build without rand (WASM-compatible)
+cargo build --target wasm32-unknown-unknown --no-default-features # Verify WASM compilation
+cargo test --verbose                                             # Run all tests (54 tests)
+cargo test <test_name>                                           # Run a single test by name
+cargo test -- --nocapture                                        # Run tests with stdout visible
 ```
 
 CI runs `cargo build --verbose && cargo test --verbose` on pushes/PRs to main.
+
+## Cargo Features
+
+- `default = ["random"]` — includes `rand` and `getrandom` for `BackRankId::shuffled()`, `GameId::random()`, `EngineBoard::shuffled()`
+- `random` — enables random generation. Disable with `default-features = false` for WASM targets where `rand` doesn't compile without `getrandom/js`.
 
 ## Architecture
 
@@ -42,3 +49,4 @@ The central type is `Board<T>` which is generic over play mode:
 - **Trait composition**: `Castling`, `BackRanks`, `Pos`, `LegalMoves`, `Review` traits compose board capabilities.
 - **Precomputed tables**: Knight destinations, king destinations, lines between squares are lazily computed once and cached.
 - **Serde throughout**: Most types derive `Serialize`/`Deserialize` for API/persistence use.
+- **Replay methods**: `EngineBoard::replay()` and `PlayerBoard::replay()` reconstruct board state from a move list (for reconnection/persistence).

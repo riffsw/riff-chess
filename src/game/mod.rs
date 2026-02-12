@@ -12,6 +12,7 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
+#[cfg(feature = "random")]
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +25,7 @@ impl GameId {
     pub fn new(value: u64) -> Self {
         Self(value)
     }
+    #[cfg(feature = "random")]
     pub fn random() -> Self {
         Self(thread_rng().gen())
     }

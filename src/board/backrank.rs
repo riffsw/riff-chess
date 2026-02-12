@@ -14,6 +14,7 @@
 
 use anyhow::Result;
 use once_cell::sync::Lazy;
+#[cfg(feature = "random")]
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
@@ -47,6 +48,7 @@ pub struct BackRankId(usize);
 impl BackRankId {
     pub const STANDARD: Self = Self(518);
 
+    #[cfg(feature = "random")]
     pub fn shuffled() -> Self {
         let index = thread_rng().gen_range(0..960usize);
         Self(index)
@@ -226,6 +228,7 @@ impl BackRank {
 
     /// Creates a shuffled back rank configuration suitable for the chess
     /// variant Chess960 (aka Fischer random chess).
+    #[cfg(feature = "random")]
     pub fn shuffled() -> Self {
         *Self::lookup(BackRankId::shuffled())
     }
