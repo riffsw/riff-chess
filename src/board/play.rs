@@ -254,6 +254,16 @@ impl PlayState<PlayerMode> {
     pub fn their_turn(&self) -> bool {
         self.turn() != self.mode.side
     }
+
+    pub fn state_at(&self, offset: &MoveId) -> Option<&MoveState> {
+        let index = offset.value();
+        if index < self.mode.review.len() {
+            Some(&self.mode.review[*offset])
+        } else {
+            None
+        }
+    }
+
     pub fn move_destinations(&self, from: Square) -> Mask {
         if self.our_turn() {
             self.legal_moves(from).destinations()

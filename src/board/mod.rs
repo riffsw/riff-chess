@@ -158,9 +158,17 @@ impl<T> AsRef<Position> for Board<T> {
     }
 }
 
+impl<T> AsRef<MoveState> for Board<T> {
+    fn as_ref(&self) -> &MoveState {
+        self.state.as_ref()
+    }
+}
+
 impl<T> BackRanks for Board<T> {}
 
 impl<T> Pos for Board<T> {}
+
+impl<T> LegalMoves for Board<T> {}
 
 impl PlayerBoard {
     pub fn move_destinations(&self, from: Square) -> Mask {
@@ -188,6 +196,10 @@ impl PlayerBoard {
 
     pub fn view(&self) -> &Position {
         self.state.view()
+    }
+
+    pub fn state_at(&self, offset: &MoveId) -> Option<&MoveState> {
+        self.state.state_at(offset)
     }
 
     /// Reconstruct a PlayerBoard by replaying a sequence of moves.

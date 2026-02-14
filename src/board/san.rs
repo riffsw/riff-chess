@@ -263,8 +263,7 @@ fn parse_san_components(s: &str) -> Result<ParsedSan> {
 
     // Check for promotion suffix: "=Q", "=R", "=B", "=N"
     let (chars, promotion) = if len >= 3 && chars[len - 2] == '=' {
-        let promo = promotion_from_san_char(chars[len - 1])
-            .ok_or(MoveError::InvalidMove)?;
+        let promo = promotion_from_san_char(chars[len - 1]).ok_or(MoveError::InvalidMove)?;
         (&chars[..len - 2], Some(promo))
     } else {
         (&chars[..], None)
@@ -470,14 +469,20 @@ mod tests {
     #[test]
     fn test_parse_pawn_advance() {
         let state = MoveState::default();
-        assert_eq!(from_san(&state, "e4").unwrap(), LegalMove::DoubleAdvance(E2, E4));
+        assert_eq!(
+            from_san(&state, "e4").unwrap(),
+            LegalMove::DoubleAdvance(E2, E4)
+        );
         assert_eq!(from_san(&state, "e3").unwrap(), LegalMove::Standard(E2, E3));
     }
 
     #[test]
     fn test_parse_knight_move() {
         let state = MoveState::default();
-        assert_eq!(from_san(&state, "Nf3").unwrap(), LegalMove::Standard(G1, F3));
+        assert_eq!(
+            from_san(&state, "Nf3").unwrap(),
+            LegalMove::Standard(G1, F3)
+        );
     }
 
     #[test]
@@ -591,10 +596,10 @@ mod tests {
         // Play a few moves and verify round-trip at each step
         let mut state = MoveState::default();
         let moves = vec![
-            LegalMove::DoubleAdvance(E2, E4),   // e4
-            LegalMove::DoubleAdvance(E7, E5),   // e5
-            LegalMove::Standard(G1, F3),        // Nf3
-            LegalMove::Standard(B8, C6),        // Nc6
+            LegalMove::DoubleAdvance(E2, E4), // e4
+            LegalMove::DoubleAdvance(E7, E5), // e5
+            LegalMove::Standard(G1, F3),      // Nf3
+            LegalMove::Standard(B8, C6),      // Nc6
         ];
         for lm in moves {
             let san = to_san(&state, lm);
