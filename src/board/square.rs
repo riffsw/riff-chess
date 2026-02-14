@@ -228,6 +228,11 @@ impl File {
         *self as usize
     }
     #[inline]
+    pub const fn to_char(&self) -> char {
+        const VALUES: [char; 8] = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+        VALUES[self.to_index()]
+    }
+    #[inline]
     pub const fn to_mask(&self) -> Mask {
         Mask::new(u64::from_be_bytes([0x1 << (7 - self.to_index()); 8]))
     }
@@ -327,6 +332,11 @@ impl Rank {
     #[inline]
     pub const fn to_index(&self) -> usize {
         *self as usize
+    }
+    #[inline]
+    pub const fn to_char(&self) -> char {
+        const VALUES: [char; 8] = ['8', '7', '6', '5', '4', '3', '2', '1'];
+        VALUES[self.to_index()]
     }
     #[inline]
     pub const fn to_mask(&self) -> Mask {

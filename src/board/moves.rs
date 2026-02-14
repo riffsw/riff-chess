@@ -134,6 +134,72 @@ impl MoveState {
         self.pinned[square.to_index()]
     }
 
+    /// Returns true if the current player has at least one truly legal move
+    /// (one that does not leave their own king in check).
+    pub fn has_any_legal_move(&self) -> bool {
+        let color = self.position.turn();
+        for sq in Square::iter() {
+            if let Some(mat) = self.contents(sq) {
+                if mat.color() == color {
+                    let moves = self.legal_moves(sq);
+                    for dest in moves.destinations().iter() {
+                        let lm = moves.get(dest).unwrap();
+                        if self.is_move_legal(lm) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// Check if a pseudo-legal move is truly legal (doesn't leave our king in check).
+    fn is_move_legal(&self, lm: LegalMove) -> bool {
+        let our_color = self.position.turn();
+        let mut pos = self.position.clone();
+        pos.apply_move(lm);
+
+        // Find our king in the post-move position
+        let king_mask = pos.occupied_by(our_color) & pos.kings();
+        if king_mask.is_empty() {
+            return false;
+        }
+        let king_sq = king_mask.iter().next().unwrap();
+
+        // Check if any opponent piece attacks our king square
+        let opponent_pieces = pos.occupied_by(!our_color);
+        for from in opponent_pieces.iter() {
+            if let Some(mat) = pos[from] {
+                let attacks = match mat.piece() {
+                    King => KING_MOVES[from],
+                    Queen => Self::visible_attacks(from, QUEEN_MOVES[from], &pos),
+                    Rook => Self::visible_attacks(from, ROOK_MOVES[from], &pos),
+                    Bishop => Self::visible_attacks(from, BISHOP_MOVES[from], &pos),
+                    Knight => KNIGHT_MOVES[from],
+                    Pawn => match mat.color() {
+                        White => WHITE_PAWN_ATTACKS[from],
+                        Black => BLACK_PAWN_ATTACKS[from],
+                    },
+                };
+                if attacks.contains(king_sq) {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    /// Compute visible attacks for a sliding piece, excluding squares behind
+    /// any occupied square (but keeping the occupied square itself).
+    fn visible_attacks(from: Square, mut mask: Mask, pos: &Position) -> Mask {
+        let blockers = pos.occupied() & mask;
+        for sq in blockers.iter() {
+            mask &= !shielded(from, sq);
+        }
+        mask
+    }
+
     pub fn is_lane_blocked(&self, lane: Mask) -> bool {
         !(lane & self.occupied()).is_empty()
     }

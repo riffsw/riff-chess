@@ -98,6 +98,7 @@ mod moves;
 mod play;
 mod position;
 mod review;
+mod san;
 mod square;
 
 pub use backrank::*;
@@ -107,6 +108,7 @@ pub use moves::*;
 pub use play::*;
 pub use position::*;
 pub use review::*;
+pub use san::*;
 pub use square::*;
 
 pub trait Turn {
