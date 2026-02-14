@@ -185,6 +185,14 @@ impl PlayerBoard {
         self.state.their_turn()
     }
 
+    pub fn cancel_pre_moves(&mut self) {
+        self.state.cancel_pre_moves()
+    }
+
+    pub fn view(&self) -> &Position {
+        self.state.view()
+    }
+
     /// Reconstruct a PlayerBoard by replaying a sequence of moves.
     pub fn replay(id: Option<BackRankId>, color: Color, moves: &[Move]) -> Result<Self> {
         let mut board = match color {
