@@ -1,4 +1,4 @@
-// Copyright 2023 Tobin Edwards
+// Copyright 2026 Tobin Edwards
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
 //    you may not use this file except in compliance with the License.
@@ -22,16 +22,11 @@
 //! [x] Chess960 rules
 //! [x] Track and automatically apply (or discard) pre-moves
 //! [x] Enforce three-fold repetition rule
-//! [ ] Enforce five-fold repetition rule
 //! [x] Enforce fifty-move rule
 //! [x] Recognize insuffient mating material (using chess.com's heuristics)
-//! [ ] Time Controls
 //! [x] Engine mode (see below for description)
 //! [x] Player mode (see below for description)
 //! [x] Review prior positions
-//! [ ] Take backs (still need to look into configuration options)
-//! [ ] Recognize some dead positions (unlikely to implement this fully)
-//! [ ] Other chess variants such as Crazyhouse, 3-Check, etc.
 //!
 //! Some of the key abstractions include:
 //!
