@@ -126,7 +126,10 @@ pub enum MatingMaterial {
     LoneKing,
 }
 
-#[derive(Debug, Clone)]
+/// What stands on each square. A cache of [`Masks`], which is the board's canonical form:
+/// the masks are what a position is hashed and serialized by, and `Squares` exists so that
+/// "what is on e4?" is one load rather than eight bit tests.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Squares([Option<Material>; 64]);
 
 impl Squares {
@@ -151,55 +154,26 @@ impl IndexMut<Square> for Squares {
 impl From<&Masks> for Squares {
     fn from(masks: &Masks) -> Self {
         let mut array = [None; 64];
-        for color in Color::iter() {
-            for square in (masks.pieces[color] & masks.kings).iter() {
-                array[square.to_index()] = Some(Material::new(color, King));
-            }
-            for square in (masks.pieces[color] & masks.queens).iter() {
-                array[square.to_index()] = Some(Material::new(color, Queen));
-            }
-            for square in (masks.pieces[color] & masks.rooks).iter() {
-                array[square.to_index()] = Some(Material::new(color, Rook));
-            }
-            for square in (masks.pieces[color] & masks.bishops).iter() {
-                array[square.to_index()] = Some(Material::new(color, Bishop));
-            }
-            for square in (masks.pieces[color] & masks.knights).iter() {
-                array[square.to_index()] = Some(Material::new(color, Knight));
-            }
-            for square in (masks.pieces[color] & masks.pawns).iter() {
-                array[square.to_index()] = Some(Material::new(color, Pawn));
-            }
+        for square in Square::iter() {
+            array[square.to_index()] = masks.get(square);
         }
         Self(array)
     }
 }
 
+/// The board as bitboards: one mask per color and one per kind of piece.
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Masks {
     pieces: Pair<Mask>,
-    kings: Mask,
-    queens: Mask,
-    rooks: Mask,
-    bishops: Mask,
-    knights: Mask,
-    pawns: Mask,
+    kinds: [Mask; 6],
 }
 
 impl From<&Squares> for Masks {
-    fn from(value: &Squares) -> Self {
+    fn from(squares: &Squares) -> Self {
         let mut masks = Masks::empty();
         for square in Square::iter() {
-            if let Some(material) = value[square] {
-                masks.pieces[material.color()] |= square;
-                match material.piece() {
-                    King => masks.kings |= square,
-                    Queen => masks.queens |= square,
-                    Rook => masks.rooks |= square,
-                    Bishop => masks.bishops |= square,
-                    Knight => masks.knights |= square,
-                    Pawn => masks.pawns |= square,
-                }
+            if let Some(material) = squares[square] {
+                masks.set(square, material);
             }
         }
         masks
@@ -210,13 +184,42 @@ impl Masks {
     fn empty() -> Self {
         Self {
             pieces: Pair::new(Mask::empty(), Mask::empty()),
-            kings: Mask::empty(),
-            queens: Mask::empty(),
-            rooks: Mask::empty(),
-            bishops: Mask::empty(),
-            knights: Mask::empty(),
-            pawns: Mask::empty(),
+            kinds: [Mask::empty(); 6],
         }
+    }
+
+    #[inline]
+    fn set(&mut self, square: Square, material: Material) {
+        self.pieces[material.color()] |= square;
+        self[material.piece()] |= square;
+    }
+
+    #[inline]
+    fn clear(&mut self, square: Square, material: Material) {
+        let mask = !square.to_mask();
+        self.pieces[material.color()] &= mask;
+        self[material.piece()] &= mask;
+    }
+
+    fn get(&self, square: Square) -> Option<Material> {
+        let color = Color::iter().find(|color| self.pieces[*color].contains(square))?;
+        let piece = Piece::iter().find(|piece| self[*piece].contains(square))?;
+        Some(Material::new(color, piece))
+    }
+}
+
+impl Index<Piece> for Masks {
+    type Output = Mask;
+    #[inline]
+    fn index(&self, piece: Piece) -> &Mask {
+        &self.kinds[piece as usize]
+    }
+}
+
+impl IndexMut<Piece> for Masks {
+    #[inline]
+    fn index_mut(&mut self, piece: Piece) -> &mut Mask {
+        &mut self.kinds[piece as usize]
     }
 }
 
@@ -403,16 +406,16 @@ impl Position {
     }
 
     pub fn mating_material(&self, side: Color) -> MatingMaterial {
-        let pieces = self.masks.pieces[side] & !self.masks.kings;
-        let pawns = pieces & self.masks.pawns;
+        let pieces = self.masks.pieces[side] & !self.masks[King];
+        let pawns = pieces & self.masks[Pawn];
         if !pawns.is_empty() {
             return MatingMaterial::Sufficient;
         }
-        let rooks = pieces & self.masks.rooks;
+        let rooks = pieces & self.masks[Rook];
         if !rooks.is_empty() {
             return MatingMaterial::Sufficient;
         }
-        let queens = pieces & self.masks.queens;
+        let queens = pieces & self.masks[Queen];
         if !queens.is_empty() {
             return MatingMaterial::Sufficient;
         }
@@ -420,13 +423,13 @@ impl Position {
             return MatingMaterial::Sufficient;
         }
         if pieces.len() == 2 {
-            if pieces == self.masks.knights {
+            if pieces == self.masks[Knight] {
                 return MatingMaterial::TwoKnights;
             }
             return MatingMaterial::Sufficient;
         }
         if !pieces.is_empty() {
-            if pieces == self.masks.knights {
+            if pieces == self.masks[Knight] {
                 return MatingMaterial::OneKnight;
             }
             return MatingMaterial::OneBishop;
@@ -518,34 +521,13 @@ impl Position {
     fn place(&mut self, square: Square, material: Material) -> Option<Material> {
         let replaced = self.remove(square);
         self.squares[square] = Some(material);
-        let mask = square.to_mask();
-        self.masks.pieces[material.color()] |= mask;
-        match material.piece() {
-            King => self.masks.kings |= mask,
-            Queen => self.masks.queens |= mask,
-            Rook => self.masks.rooks |= mask,
-            Bishop => self.masks.bishops |= mask,
-            Knight => self.masks.knights |= mask,
-            Pawn => self.masks.pawns |= mask,
-        }
+        self.masks.set(square, material);
         replaced
     }
     fn remove(&mut self, square: Square) -> Option<Material> {
-        if let Some(material) = self.squares[square] {
-            self.squares[square] = None;
-            let mask = !square.to_mask();
-            self.masks.pieces[material.color()] &= mask;
-            match material.piece() {
-                King => self.masks.kings &= mask,
-                Queen => self.masks.queens &= mask,
-                Rook => self.masks.rooks &= mask,
-                Bishop => self.masks.bishops &= mask,
-                Knight => self.masks.knights &= mask,
-                Pawn => self.masks.pawns &= mask,
-            }
-            return Some(material);
-        }
-        None
+        let material = self.squares[square].take()?;
+        self.masks.clear(square, material);
+        Some(material)
     }
 }
 
@@ -610,32 +592,32 @@ pub trait Pos: Turn + AsRef<Position> {
     #[inline]
     fn kings(&self) -> Mask {
         let pos: &Position = self.as_ref();
-        pos.masks.kings
+        pos.masks[King]
     }
     #[inline]
     fn queens(&self) -> Mask {
         let pos: &Position = self.as_ref();
-        pos.masks.queens
+        pos.masks[Queen]
     }
     #[inline]
     fn rooks(&self) -> Mask {
         let pos: &Position = self.as_ref();
-        pos.masks.rooks
+        pos.masks[Rook]
     }
     #[inline]
     fn bishops(&self) -> Mask {
         let pos: &Position = self.as_ref();
-        pos.masks.bishops
+        pos.masks[Bishop]
     }
     #[inline]
     fn knights(&self) -> Mask {
         let pos: &Position = self.as_ref();
-        pos.masks.knights
+        pos.masks[Knight]
     }
     #[inline]
     fn pawns(&self) -> Mask {
         let pos: &Position = self.as_ref();
-        pos.masks.pawns
+        pos.masks[Pawn]
     }
     #[inline]
     fn occupied_by(&self, color: Color) -> Mask {
@@ -864,7 +846,37 @@ impl Position {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{LegalMoves, MoveState};
     use Square::*;
+
+    /// Both views of the board agree after every move of a long random game. The walk is
+    /// seeded, so a failure reproduces.
+    #[test]
+    fn test_squares_follow_masks() {
+        let mut state = MoveState::default();
+        let mut seed: u64 = 0x5EED;
+        let mut plies = 0;
+        for _ in 0..400 {
+            let pos: &Position = state.as_ref();
+            let moves: Vec<LegalMove> = pos
+                .ours()
+                .iter()
+                .flat_map(|from| state.legal_moves(from).values().copied().collect::<Vec<_>>())
+                .collect();
+            if moves.is_empty() {
+                break;
+            }
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            let mv = moves[(seed >> 33) as usize % moves.len()];
+            state.apply_move(mv);
+            plies += 1;
+
+            let pos: &Position = state.as_ref();
+            assert_eq!(Squares::from(pos.masks()), *pos.squares(), "after {mv:?}");
+            assert_eq!(Masks::from(pos.squares()), *pos.masks(), "after {mv:?}");
+        }
+        assert!(plies > 100, "the walk ended after {plies} plies; pick another seed");
+    }
 
     #[test]
     fn test_diagonals() {
