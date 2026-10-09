@@ -25,6 +25,8 @@ use super::review::{Review, ReviewMut, ReviewState};
 use super::square::{Mask, Square};
 use super::Turn;
 
+use Color::*;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BoardResult {
     CheckMate(Color),
@@ -230,16 +232,11 @@ impl PlayState<EngineMode> {
     fn is_insufficient(&self) -> bool {
         use MatingMaterial::*;
         let pos: &Position = self.as_ref();
-        match pos.our_mating_material() {
-            Sufficient => false,
-            ours => match (ours, pos.their_mating_material()) {
-                (_, Sufficient) => false,
-                (LoneKing, _) => true,
-                (_, LoneKing) => true,
-                (TwoKnights, _) => false,
-                (_, TwoKnights) => false,
-                _ => true,
-            },
+        match (pos.mating_material(White), pos.mating_material(Black)) {
+            (Sufficient, _) | (_, Sufficient) => false,
+            (LoneKing, _) | (_, LoneKing) => true,
+            (TwoKnights, _) | (_, TwoKnights) => false,
+            _ => true,
         }
     }
 }

@@ -174,7 +174,7 @@ impl MoveState {
     /// rank and file picture at once, so this is the one move the pin lanes and the check
     /// mask cannot judge; it is made on a copy and the king's square inspected.
     fn en_passant_is_safe(&self, mv: LegalMove) -> bool {
-        let king = self.our_king();
+        let king = self.king(self.turn());
         let mut pos = self.position.clone();
         pos.apply_move(mv);
         attacks(&pos, king, !self.turn()).is_empty()
@@ -203,7 +203,7 @@ impl MoveState {
                 self.attackers[to] |= from.to_mask();
             }
         }
-        let king = self.our_king();
+        let king = self.king(self.turn());
         self.checks = self.attackers(king);
         self.check_mask = match self.checks.len() {
             0 => Mask::all(),
@@ -213,7 +213,7 @@ impl MoveState {
             }
             _ => Mask::empty(),
         };
-        for from in self.their_line_pieces().iter() {
+        for from in (self.theirs() & self.line_pieces()).iter() {
             let lane = between(from, king);
             if lane.is_empty() {
                 continue;
@@ -344,7 +344,7 @@ pub trait LegalMoves: AsRef<Position> + AsRef<MoveState> {
         let mut result = MoveSet::new();
         let state: &MoveState = self.as_ref();
         let pos: &Position = self.as_ref();
-        let castling = pos.our_castling();
+        let castling = pos.castling(pos.turn());
         if castling.oo()
             && !state.is_attacked(castling.king_src())
             && !state.is_lane_blocked(castling.oo_blocking_lane())
@@ -364,7 +364,7 @@ pub trait LegalMoves: AsRef<Position> + AsRef<MoveState> {
         let mut result = MoveSet::new();
         let state: &MoveState = self.as_ref();
         let pos: &Position = self.as_ref();
-        let castling = pos.our_castling();
+        let castling = pos.castling(pos.turn());
         if castling.ooo()
             && !state.is_attacked(castling.king_src())
             && !state.is_lane_blocked(castling.ooo_blocking_lane())
@@ -496,10 +496,12 @@ pub trait PreMoves: AsRef<Position> {
     }
 
     fn pre_moves(&self, from: Square) -> MoveSet<PreMove> {
+        // a pre-move is made by the side that is *not* on move
+        let pos: &Position = self.as_ref();
+        let side = !pos.turn();
         let short_castle_targets = || -> Mask {
             let mut mask = Mask::empty();
-            let pos: &Position = self.as_ref();
-            let castling = pos.their_castling();
+            let castling = pos.castling(side);
             if castling.oo() {
                 mask |= castling.oo_king_dest().to_mask();
                 mask |= castling.oo_rook_dest().to_mask();
@@ -508,8 +510,7 @@ pub trait PreMoves: AsRef<Position> {
         };
         let long_castle_targets = || -> Mask {
             let mut mask = Mask::empty();
-            let pos: &Position = self.as_ref();
-            let castling = pos.their_castling();
+            let castling = pos.castling(side);
             if castling.ooo() {
                 mask |= castling.ooo_king_dest().to_mask();
                 mask |= castling.ooo_rook_dest().to_mask();
@@ -518,9 +519,8 @@ pub trait PreMoves: AsRef<Position> {
         };
 
         let mut result = MoveSet::new();
-        let pos: &Position = self.as_ref();
         if let Some(material) = pos.contents(from) {
-            if material.color() == !pos.turn() {
+            if material.color() == side {
                 match material.piece() {
                     King => {
                         for dest in KING_MOVES[from].iter() {

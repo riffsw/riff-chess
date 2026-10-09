@@ -402,15 +402,7 @@ impl Position {
         self.en_passant
     }
 
-    pub fn our_mating_material(&self) -> MatingMaterial {
-        self.mating_material(self.turn())
-    }
-
-    pub fn their_mating_material(&self) -> MatingMaterial {
-        self.mating_material(!self.turn())
-    }
-
-    fn mating_material(&self, side: Color) -> MatingMaterial {
+    pub fn mating_material(&self, side: Color) -> MatingMaterial {
         let pieces = self.masks.pieces[side] & !self.masks.kings;
         let pawns = pieces & self.masks.pawns;
         if !pawns.is_empty() {
@@ -443,14 +435,15 @@ impl Position {
     }
 
     pub fn apply_move(&mut self, mv: LegalMove) -> MoveId {
+        let side = self.turn();
         self.moves_since_progress += 1;
         match mv {
             LegalMove::Standard(from, to) => {
                 let material = self.remove(from).unwrap();
                 let captured = self.place(to, material);
                 self.en_passant = None;
-                self.our_castling_mut().update(from);
-                self.their_castling_mut().update(to);
+                self.castling_mut(side).update(from);
+                self.castling_mut(!side).update(to);
                 if captured.is_some() || material.piece() == Pawn {
                     self.moves_since_progress = 0;
                 }
@@ -474,24 +467,16 @@ impl Position {
                 let mut material = self.remove(from).unwrap();
                 material.set_piece(promotion.into());
                 self.place(to, material);
-                self.their_castling_mut().update(to);
+                self.castling_mut(!side).update(to);
                 self.en_passant = None;
                 self.moves_since_progress = 0;
             }
             LegalMove::ShortCastle => {
-                let king = self.remove(self.our_king_src()).unwrap();
-                let rook = self.remove(self.our_oo_rook_src()).unwrap();
-                self.place(self.our_oo_king_dest(), king);
-                self.place(self.our_oo_rook_dest(), rook);
-                self.our_castling_mut().clear();
+                self.castle(side, self.castling(side).oo_squares());
                 self.en_passant = None;
             }
             LegalMove::LongCastle => {
-                let king = self.remove(self.our_king_src()).unwrap();
-                let rook = self.remove(self.our_ooo_rook_src()).unwrap();
-                self.place(self.our_ooo_king_dest(), king);
-                self.place(self.our_ooo_rook_dest(), rook);
-                self.our_castling_mut().clear();
+                self.castle(side, self.castling(side).ooo_squares());
                 self.en_passant = None;
             }
         };
@@ -501,36 +486,33 @@ impl Position {
     }
 
     pub fn apply_pre_move(&mut self, mv: PreMove) {
-        // Note: it's not "our" turn, so we use "their" to refer to
-        // the side performing the pre-move, and vise versa.
+        // a pre-move is made by the side that is *not* on move
+        let side = !self.turn();
         match mv {
             PreMove::Standard(from, to) => {
                 let material = self.remove(from).unwrap();
                 self.place(to, material);
-                self.their_castling_mut().update(from);
-                self.our_castling_mut().update(to);
+                self.castling_mut(side).update(from);
+                self.castling_mut(!side).update(to);
             }
             PreMove::Promoting(from, to, promotion) => {
                 let mut material = self.remove(from).unwrap();
                 material.set_piece(promotion.into());
                 self.place(to, material);
-                self.our_castling_mut().update(to);
+                self.castling_mut(!side).update(to);
             }
-            PreMove::ShortCastle => {
-                let king = self.remove(self.their_king_src()).unwrap();
-                let rook = self.remove(self.their_oo_rook_src()).unwrap();
-                self.place(self.their_oo_king_dest(), king);
-                self.place(self.their_oo_rook_dest(), rook);
-                self.their_castling_mut().clear();
-            }
-            PreMove::LongCastle => {
-                let king = self.remove(self.their_king_src()).unwrap();
-                let rook = self.remove(self.their_ooo_rook_src()).unwrap();
-                self.place(self.their_ooo_king_dest(), king);
-                self.place(self.their_ooo_rook_dest(), rook);
-                self.their_castling_mut().clear();
-            }
+            PreMove::ShortCastle => self.castle(side, self.castling(side).oo_squares()),
+            PreMove::LongCastle => self.castle(side, self.castling(side).ooo_squares()),
         }
+    }
+
+    /// Move `side`'s king and rook to their castling squares and spend its rights.
+    fn castle(&mut self, side: Color, [king, rook]: [(Square, Square); 2]) {
+        let king_material = self.remove(king.0).unwrap();
+        let rook_material = self.remove(rook.0).unwrap();
+        self.place(king.1, king_material);
+        self.place(rook.1, rook_material);
+        self.castling_mut(side).clear();
     }
 
     fn place(&mut self, square: Square, material: Material) -> Option<Material> {
@@ -598,82 +580,14 @@ impl BackRanks for Position {}
 impl Pos for Position {}
 
 impl Position {
+    /// `side`'s castling rights, read with the back rank they refer to.
     #[inline]
-    pub fn our_king_src(&self) -> Square {
-        self.our_castling().king_src()
+    pub fn castling(&self, side: Color) -> CastlingRightsRef<'_> {
+        CastlingRightsRef::new(&self.castling[side], self.backrank)
     }
     #[inline]
-    pub fn our_oo_rook_src(&self) -> Square {
-        self.our_castling().oo_rook_src()
-    }
-    #[inline]
-    pub fn our_ooo_rook_src(&self) -> Square {
-        self.our_castling().ooo_rook_src()
-    }
-    #[inline]
-    pub fn our_oo_king_dest(&self) -> Square {
-        self.our_castling().oo_king_dest()
-    }
-    #[inline]
-    pub fn our_ooo_king_dest(&self) -> Square {
-        self.our_castling().ooo_king_dest()
-    }
-    #[inline]
-    pub fn our_oo_rook_dest(&self) -> Square {
-        self.our_castling().oo_rook_dest()
-    }
-    #[inline]
-    pub fn our_ooo_rook_dest(&self) -> Square {
-        self.our_castling().ooo_rook_dest()
-    }
-    #[inline]
-    pub fn their_king_src(&self) -> Square {
-        self.their_castling().king_src()
-    }
-    #[inline]
-    pub fn their_oo_rook_src(&self) -> Square {
-        self.their_castling().oo_rook_src()
-    }
-    #[inline]
-    pub fn their_ooo_rook_src(&self) -> Square {
-        self.their_castling().ooo_rook_src()
-    }
-    #[inline]
-    pub fn their_oo_king_dest(&self) -> Square {
-        self.their_castling().oo_king_dest()
-    }
-    #[inline]
-    pub fn their_ooo_king_dest(&self) -> Square {
-        self.their_castling().ooo_king_dest()
-    }
-    #[inline]
-    pub fn their_oo_rook_dest(&self) -> Square {
-        self.their_castling().oo_rook_dest()
-    }
-    #[inline]
-    pub fn their_ooo_rook_dest(&self) -> Square {
-        self.their_castling().ooo_rook_dest()
-    }
-    #[inline]
-    pub fn our_castling(&self) -> CastlingRightsRef<'_> {
-        let turn = self.turn();
-        CastlingRightsRef::new(&self.castling[turn], self.backrank)
-    }
-    #[inline]
-    pub fn their_castling(&self) -> CastlingRightsRef<'_> {
-        let turn = self.turn();
-        CastlingRightsRef::new(&self.castling[!turn], self.backrank)
-    }
-
-    #[inline]
-    pub fn our_castling_mut(&mut self) -> CastlingRightsMut<'_> {
-        let turn = self.turn();
-        CastlingRightsMut::new(&mut self.castling[turn], self.backrank)
-    }
-    #[inline]
-    pub fn their_castling_mut(&mut self) -> CastlingRightsMut<'_> {
-        let turn = self.turn();
-        CastlingRightsMut::new(&mut self.castling[!turn], self.backrank)
+    pub fn castling_mut(&mut self, side: Color) -> CastlingRightsMut<'_> {
+        CastlingRightsMut::new(&mut self.castling[side], self.backrank)
     }
 }
 
@@ -732,64 +646,10 @@ pub trait Pos: Turn + AsRef<Position> {
     }
 
     #[inline]
-    fn our_king(&self) -> Square {
-        let mask = self.ours() & self.kings();
+    fn king(&self, side: Color) -> Square {
+        let mask = self.occupied_by(side) & self.kings();
         debug_assert!(mask.len() == 1);
         mask.iter().next().unwrap()
-    }
-    #[inline]
-    fn our_queens(&self) -> Mask {
-        self.ours() & self.queens()
-    }
-    #[inline]
-    fn our_rooks(&self) -> Mask {
-        self.ours() & self.rooks()
-    }
-    #[inline]
-    fn our_bishops(&self) -> Mask {
-        self.ours() & self.bishops()
-    }
-    #[inline]
-    fn our_knights(&self) -> Mask {
-        self.ours() & self.knights()
-    }
-    #[inline]
-    fn our_pawns(&self) -> Mask {
-        self.ours() & self.pawns()
-    }
-    #[inline]
-    fn our_line_pieces(&self) -> Mask {
-        self.theirs() & self.line_pieces()
-    }
-    #[inline]
-    fn their_king(&self) -> Square {
-        let mask = self.theirs() & self.kings();
-        debug_assert!(mask.len() == 1);
-        mask.iter().next().unwrap()
-    }
-    #[inline]
-    fn their_queens(&self) -> Mask {
-        self.theirs() & self.queens()
-    }
-    #[inline]
-    fn their_rooks(&self) -> Mask {
-        self.theirs() & self.rooks()
-    }
-    #[inline]
-    fn their_bishops(&self) -> Mask {
-        self.theirs() & self.bishops()
-    }
-    #[inline]
-    fn their_knights(&self) -> Mask {
-        self.theirs() & self.knights()
-    }
-    #[inline]
-    fn their_pawns(&self) -> Mask {
-        self.theirs() & self.pawns()
-    }
-    #[inline]
-    fn their_line_pieces(&self) -> Mask {
-        self.theirs() & self.line_pieces()
     }
     #[inline]
     fn is_vacant(&self, square: Square) -> bool {

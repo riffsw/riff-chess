@@ -68,6 +68,21 @@ pub trait Castling: AsRef<BackRank> + AsRef<CastlingRights> {
         let rights: &CastlingRights = self.as_ref();
         Square::new(FileD, rights.rank())
     }
+    /// The king's and the rook's `(from, to)` when castling short.
+    #[inline]
+    fn oo_squares(&self) -> [(Square, Square); 2] {
+        [
+            (self.king_src(), self.oo_king_dest()),
+            (self.oo_rook_src(), self.oo_rook_dest()),
+        ]
+    }
+    #[inline]
+    fn ooo_squares(&self) -> [(Square, Square); 2] {
+        [
+            (self.king_src(), self.ooo_king_dest()),
+            (self.ooo_rook_src(), self.ooo_rook_dest()),
+        ]
+    }
     /// The squares that must be empty to castle short: the king's path and the rook's
     /// path, not counting the king and rook themselves. In Chess960 either piece may
     /// already stand on its destination and the two paths may cross.
