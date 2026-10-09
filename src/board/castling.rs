@@ -68,26 +68,33 @@ pub trait Castling: AsRef<BackRank> + AsRef<CastlingRights> {
         let rights: &CastlingRights = self.as_ref();
         Square::new(FileD, rights.rank())
     }
+    /// The squares that must be empty to castle short: the king's path and the rook's
+    /// path, not counting the king and rook themselves. In Chess960 either piece may
+    /// already stand on its destination and the two paths may cross.
     fn oo_blocking_lane(&self) -> Mask {
+        let king_src = self.king_src();
         let rook_src = self.oo_rook_src();
-        let king_src = self.king_src();
-        between(king_src, rook_src)
+        (path(king_src, self.oo_king_dest()) | path(rook_src, self.oo_rook_dest()))
+            & !(king_src.to_mask() | rook_src)
     }
+    /// The squares the king crosses or lands on castling short; none may be attacked.
     fn oo_attacking_lane(&self) -> Mask {
-        let king_dest = self.oo_king_dest();
-        let king_src = self.king_src();
-        between(king_src, king_dest) | king_dest
+        path(self.king_src(), self.oo_king_dest())
     }
     fn ooo_blocking_lane(&self) -> Mask {
-        let rook_src = self.ooo_rook_src();
         let king_src = self.king_src();
-        between(rook_src, king_src)
+        let rook_src = self.ooo_rook_src();
+        (path(king_src, self.ooo_king_dest()) | path(rook_src, self.ooo_rook_dest()))
+            & !(king_src.to_mask() | rook_src)
     }
     fn ooo_attacking_lane(&self) -> Mask {
-        let king_dest = self.ooo_king_dest();
-        let king_src = self.king_src();
-        between(king_dest, king_src) | king_dest
+        path(self.king_src(), self.ooo_king_dest())
     }
+}
+
+/// The squares a piece crosses moving from `from` to `to` along a line, `to` included.
+fn path(from: Square, to: Square) -> Mask {
+    between(from, to) | to
 }
 
 pub trait CastlingMut: Castling + AsMut<CastlingRights> {
@@ -224,5 +231,72 @@ impl Default for Pair<CastlingRights> {
             CastlingRights::new(Color::White, true, true),
             CastlingRights::new(Color::Black, true, true),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{BackRankId, LegalMove, LegalMoves, Material, MoveState, Position};
+    use strum::IntoEnumIterator;
+    use Square::*;
+
+    /// A back rank with the king on `king` and rooks on `rooks`, found by searching the
+    /// 960; a white position with rank 1 cleared except for those three pieces, and
+    /// `occupied` filled with bishops.
+    fn position(king: File, rooks: [File; 2], occupied: &[Square]) -> Position {
+        let id = (0..960usize)
+            .map(|i| BackRankId::try_from(i).unwrap())
+            .find(|id| {
+                let br: &'static BackRank = (*id).into();
+                br.king() == king && br.rooks() == rooks
+            })
+            .expect("such a back rank exists");
+        let mut pos = Position::new(id.into());
+        for file in File::iter() {
+            if file != king && !rooks.contains(&file) {
+                pos = pos.set_contents(Square::new(file, Rank::Rank1), None);
+            }
+        }
+        for square in occupied {
+            pos = pos.set_contents(*square, Some(Material::WB));
+        }
+        pos
+    }
+
+    fn offers(pos: Position, from: Square, mv: LegalMove) -> bool {
+        MoveState::new(pos).legal_moves(from).values().any(|m| *m == mv)
+    }
+
+    #[test]
+    fn test_960_long_castle_needs_the_destinations_clear() {
+        // king b1, rook a1: nothing lies between them, but c1 and d1 must be empty
+        assert!(offers(position(FileB, [FileA, FileH], &[]), B1, LegalMove::LongCastle));
+        assert!(!offers(position(FileB, [FileA, FileH], &[C1]), B1, LegalMove::LongCastle));
+        assert!(!offers(position(FileB, [FileA, FileH], &[D1]), B1, LegalMove::LongCastle));
+    }
+
+    #[test]
+    fn test_960_short_castle_with_the_king_already_home() {
+        // king g1, rook h1: the king stays put and the rook needs f1
+        assert!(offers(position(FileG, [FileA, FileH], &[]), G1, LegalMove::ShortCastle));
+        assert!(!offers(position(FileG, [FileA, FileH], &[F1]), G1, LegalMove::ShortCastle));
+    }
+
+    #[test]
+    fn test_960_castling_pieces_do_not_block_each_other() {
+        // king f1, rook g1: they swap, crossing each other's square
+        assert!(offers(position(FileF, [FileA, FileG], &[]), F1, LegalMove::ShortCastle));
+        // king c1, rook a1: the king stays, the rook crosses b1 and lands on d1
+        assert!(offers(position(FileC, [FileA, FileH], &[]), C1, LegalMove::LongCastle));
+        assert!(!offers(position(FileC, [FileA, FileH], &[B1]), C1, LegalMove::LongCastle));
+    }
+
+    #[test]
+    fn test_standard_castling_lanes_are_unchanged() {
+        let pos = position(FileE, [FileA, FileH], &[]);
+        assert!(offers(pos.clone(), E1, LegalMove::ShortCastle));
+        assert!(offers(pos, E1, LegalMove::LongCastle));
+        assert!(!offers(position(FileE, [FileA, FileH], &[B1]), E1, LegalMove::LongCastle));
     }
 }
