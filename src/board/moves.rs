@@ -25,7 +25,7 @@ use thiserror::Error;
 use super::backrank::BackRank;
 use super::castling::Castling;
 use super::material::{Color, Piece};
-use super::position::{between, blocked, shielded};
+use super::position::{between, shielded};
 use super::position::{MoveId, Pos, Position};
 use super::position::{ALL_LINES, DIAGONALS, HORIZONTALS};
 use super::square::{Direction, File, Mask, Offset, Rank, Square};
@@ -42,11 +42,28 @@ pub enum MoveError {
 }
 use MoveError::*;
 
+/// A position plus everything legal move generation needs to know about the king's safety:
+/// which of their pieces attack each square, which of our pieces are pinned and along which
+/// lane, and which squares a move must reach to answer a check.
+///
+/// With those three facts a move's legality is decided by masking rather than by making the
+/// move and looking for an attack on the king afterwards. The one exception is en passant,
+/// whose captured pawn leaves a different square than the moving one; that case is tested
+/// the slow way, in `en_passant_is_safe`.
 #[derive(Debug, Clone)]
 pub struct MoveState {
     position: Position,
+    /// Their pieces giving check.
     checks: Mask,
+    /// Where a piece other than the king may go without leaving the king in check: every
+    /// square when there is no check, the checker and the squares between it and the king
+    /// in single check, nowhere in double check.
+    check_mask: Mask,
+    /// For each square, their pieces attacking it. A piece defended by a slider counts as
+    /// attacked, so the king may not capture it.
     attackers: [Mask; 64],
+    /// For each of our pinned pieces, the lane it must stay on: the squares between the
+    /// pinner and our king, plus the pinner itself.
     pinned: [Option<Mask>; 64],
 }
 
@@ -88,6 +105,7 @@ impl MoveState {
         let mut result = Self {
             position,
             checks: Mask::empty(),
+            check_mask: Mask::all(),
             attackers: [Mask::empty(); 64],
             pinned: [None; 64],
         };
@@ -134,70 +152,32 @@ impl MoveState {
         self.pinned[square.to_index()]
     }
 
-    /// Returns true if the current player has at least one truly legal move
-    /// (one that does not leave their own king in check).
+    /// The squares a piece on `from` may move to without leaving our king in check, before
+    /// considering how the piece moves: it must answer any check, and it must stay on its
+    /// lane if pinned. Not for the king, whose own square is what moves.
+    #[inline]
+    pub fn allowed(&self, from: Square) -> Mask {
+        match self.pinned(from) {
+            Some(lane) => self.check_mask & lane,
+            None => self.check_mask,
+        }
+    }
+
+    /// Whether the side to move has a legal move; false means checkmate or stalemate.
     pub fn has_any_legal_move(&self) -> bool {
-        let color = self.position.turn();
-        for sq in Square::iter() {
-            if let Some(mat) = self.contents(sq) {
-                if mat.color() == color {
-                    let moves = self.legal_moves(sq);
-                    for dest in moves.destinations().iter() {
-                        let lm = moves.get(dest).unwrap();
-                        if self.is_move_legal(lm) {
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-        false
+        self.ours()
+            .iter()
+            .any(|from| !self.legal_moves(from).destinations().is_empty())
     }
 
-    /// Check if a pseudo-legal move is truly legal (doesn't leave our king in check).
-    fn is_move_legal(&self, lm: LegalMove) -> bool {
-        let our_color = self.position.turn();
+    /// Whether an en passant capture leaves our king attacked. Two pawns leave the board's
+    /// rank and file picture at once, so this is the one move the pin lanes and the check
+    /// mask cannot judge; it is made on a copy and the king's square inspected.
+    fn en_passant_is_safe(&self, mv: LegalMove) -> bool {
+        let king = self.our_king();
         let mut pos = self.position.clone();
-        pos.apply_move(lm);
-
-        // Find our king in the post-move position
-        let king_mask = pos.occupied_by(our_color) & pos.kings();
-        if king_mask.is_empty() {
-            return false;
-        }
-        let king_sq = king_mask.iter().next().unwrap();
-
-        // Check if any opponent piece attacks our king square
-        let opponent_pieces = pos.occupied_by(!our_color);
-        for from in opponent_pieces.iter() {
-            if let Some(mat) = pos[from] {
-                let attacks = match mat.piece() {
-                    King => KING_MOVES[from],
-                    Queen => Self::visible_attacks(from, QUEEN_MOVES[from], &pos),
-                    Rook => Self::visible_attacks(from, ROOK_MOVES[from], &pos),
-                    Bishop => Self::visible_attacks(from, BISHOP_MOVES[from], &pos),
-                    Knight => KNIGHT_MOVES[from],
-                    Pawn => match mat.color() {
-                        White => WHITE_PAWN_ATTACKS[from],
-                        Black => BLACK_PAWN_ATTACKS[from],
-                    },
-                };
-                if attacks.contains(king_sq) {
-                    return false;
-                }
-            }
-        }
-        true
-    }
-
-    /// Compute visible attacks for a sliding piece, excluding squares behind
-    /// any occupied square (but keeping the occupied square itself).
-    fn visible_attacks(from: Square, mut mask: Mask, pos: &Position) -> Mask {
-        let blockers = pos.occupied() & mask;
-        for sq in blockers.iter() {
-            mask &= !shielded(from, sq);
-        }
-        mask
+        pos.apply_move(mv);
+        attacks(&pos, king, !self.turn()).is_empty()
     }
 
     pub fn is_lane_blocked(&self, lane: Mask) -> bool {
@@ -210,78 +190,82 @@ impl MoveState {
 
     fn reset(&mut self) {
         self.checks = Mask::empty();
+        self.check_mask = Mask::all();
         self.attackers = [Mask::empty(); 64];
         self.pinned = [None; 64];
         self.init();
     }
 
     fn init(&mut self) {
+        let occupied = self.occupied();
         for from in self.theirs().iter() {
-            for to in self.attacked(from).iter() {
+            for to in attacked_from(&self.position, from, occupied).iter() {
                 self.attackers[to] |= from.to_mask();
             }
         }
         let king = self.our_king();
         self.checks = self.attackers(king);
+        self.check_mask = match self.checks.len() {
+            0 => Mask::all(),
+            1 => {
+                let checker = self.checks.iter().next().unwrap();
+                between(checker, king) | checker.to_mask()
+            }
+            _ => Mask::empty(),
+        };
         for from in self.their_line_pieces().iter() {
             let lane = between(from, king);
-            if !lane.is_empty() {
-                let blockers = lane & self.occupied();
-                if blockers.len() == 1 {
-                    let blockers = blockers & self.ours();
-                    if !blockers.is_empty() {
-                        let square = blockers.iter().next().unwrap();
-                        self.pinned[square] = Some(lane);
-                    }
-                }
+            if lane.is_empty() {
+                continue;
+            }
+            let blockers = lane & occupied;
+            if blockers.len() == 1 && !(blockers & self.ours()).is_empty() {
+                let square = blockers.iter().next().unwrap();
+                // the pinned piece may slide along the lane or capture the pinner
+                self.pinned[square] = Some(lane | from.to_mask());
             }
         }
     }
+}
 
-    fn attacked(&self, from: Square) -> Mask {
-        if let Some(material) = self.contents(from) {
-            return match material.piece() {
-                King => KING_MOVES[from],
-                Queen => self.exclude_blocked_attacks(from, QUEEN_MOVES[from]),
-                Rook => self.exclude_blocked_attacks(from, ROOK_MOVES[from]),
-                Bishop => self.exclude_blocked_attacks(from, BISHOP_MOVES[from]),
-                Knight => KNIGHT_MOVES[from],
-                Pawn => match material.color() {
-                    White => WHITE_PAWN_ATTACKS[from],
-                    Black => BLACK_PAWN_ATTACKS[from],
-                },
-            };
-        }
-        Mask::empty()
+/// The squares a slider on `from` reaches along `rays` given `occupied`: each ray stops at
+/// its first occupied square and includes it. What it reaches, it attacks; what it may move
+/// to is that minus its own side's pieces.
+fn reach(from: Square, mut rays: Mask, occupied: Mask) -> Mask {
+    for blocker in (rays & occupied).iter() {
+        rays &= !shielded(from, blocker);
     }
+    rays
+}
 
-    fn exclude_blocked_attacks(&self, from: Square, mut mask: Mask) -> Mask {
-        let theirs: Mask = self.theirs() & mask;
-        for square in theirs.iter() {
-            // exclude squares blocked by their own pieces
-            mask &= !blocked(from, square);
-        }
-        let ours: Mask = self.ours() & mask;
-        for square in ours.iter() {
-            // exclude squares shielded by our pieces
-            mask &= !shielded(from, square);
-        }
-        mask
+/// The squares attacked by whatever stands on `from`, or none if the square is empty.
+fn attacked_from(pos: &Position, from: Square, occupied: Mask) -> Mask {
+    match pos.contents(from) {
+        None => Mask::empty(),
+        Some(material) => match material.piece() {
+            King => KING_MOVES[from],
+            Queen => reach(from, QUEEN_MOVES[from], occupied),
+            Rook => reach(from, ROOK_MOVES[from], occupied),
+            Bishop => reach(from, BISHOP_MOVES[from], occupied),
+            Knight => KNIGHT_MOVES[from],
+            Pawn => match material.color() {
+                White => WHITE_PAWN_ATTACKS[from],
+                Black => BLACK_PAWN_ATTACKS[from],
+            },
+        },
     }
+}
 
-    fn exclude_blocked_moves(&self, from: Square, mut mask: Mask) -> Mask {
-        let ours: Mask = self.ours() & mask;
-        for square in ours.iter() {
-            // exclude squares blocked by our own pieces
-            mask &= !blocked(from, square);
+/// The pieces of color `by` attacking `square` in `pos`.
+fn attacks(pos: &Position, square: Square, by: Color) -> Mask {
+    let occupied = pos.occupied();
+    let mut result = Mask::empty();
+    for from in pos.occupied_by(by).iter() {
+        if attacked_from(pos, from, occupied).contains(square) {
+            result |= from.to_mask();
         }
-        let theirs: Mask = self.theirs() & mask;
-        for square in theirs.iter() {
-            // exclude squares shielded by their pieces
-            mask &= !shielded(from, square);
-        }
-        mask
     }
+    result
 }
 
 pub trait LegalMoves: AsRef<Position> + AsRef<MoveState> {
@@ -303,7 +287,7 @@ pub trait LegalMoves: AsRef<Position> + AsRef<MoveState> {
             }
             Ok(LegalMove::Promoting(mv.from, mv.to, mv.promotion.unwrap()))
         } else {
-            Ok(legal_moves.get(mv.from).unwrap())
+            Ok(legal_moves.get(mv.to).unwrap())
         }
     }
 
@@ -408,18 +392,12 @@ pub trait LegalMoves: AsRef<Position> + AsRef<MoveState> {
         self.all_line_moves(from, BISHOP_MOVES[from])
     }
 
-    fn all_line_moves(&self, from: Square, mut destinations: Mask) -> MoveSet<LegalMove> {
+    fn all_line_moves(&self, from: Square, rays: Mask) -> MoveSet<LegalMove> {
         let mut result = MoveSet::new();
         let state: &MoveState = self.as_ref();
-        if !state.is_double_check() {
-            // restrict movement if pinned
-            if let Some(lane) = state.pinned(from) {
-                destinations &= lane;
-            }
-            let destinations = state.exclude_blocked_moves(from, destinations);
-            for dest in destinations.iter() {
-                result.insert(dest, LegalMove::Standard(from, dest));
-            }
+        let destinations = reach(from, rays, state.occupied()) & !state.ours() & state.allowed(from);
+        for dest in destinations.iter() {
+            result.insert(dest, LegalMove::Standard(from, dest));
         }
         result
     }
@@ -427,12 +405,10 @@ pub trait LegalMoves: AsRef<Position> + AsRef<MoveState> {
     fn all_knight_moves(&self, from: Square) -> MoveSet<LegalMove> {
         let mut result = MoveSet::new();
         let state: &MoveState = self.as_ref();
-        if !state.is_double_check() && state.pinned(from).is_none() {
-            let mut destinations = KNIGHT_MOVES[from];
-            destinations &= !state.ours();
-            for dest in destinations.iter() {
-                result.insert(dest, LegalMove::Standard(from, dest))
-            }
+        // a pinned knight has no move: no knight destination lies on its lane
+        let destinations = KNIGHT_MOVES[from] & !state.ours() & state.allowed(from);
+        for dest in destinations.iter() {
+            result.insert(dest, LegalMove::Standard(from, dest))
         }
         result
     }
@@ -446,26 +422,15 @@ pub trait LegalMoves: AsRef<Position> + AsRef<MoveState> {
     fn standard_pawn_moves(&self, from: Square) -> MoveSet<LegalMove> {
         let mut result = MoveSet::new();
         let state: &MoveState = self.as_ref();
-        if !state.is_double_check() {
-            let pos: &Position = self.as_ref();
-            let (mut advances, mut captures) = match pos.turn() {
-                White => (WHITE_SINGLE_ADVANCES[from], WHITE_PAWN_ATTACKS[from]),
-                Black => (BLACK_SINGLE_ADVANCES[from], BLACK_PAWN_ATTACKS[from]),
-            };
-            // restrict movement if pinned
-            if let Some(lane) = state.pinned(from) {
-                advances &= lane;
-                captures &= lane;
-            }
-            // exclude blocked single advances (double advances are handled
-            // by `double_advance_moves`)
-            advances &= !pos.occupied();
-            // exclude captures that don't target their pieces
-            captures &= pos.theirs();
-            let destinations = advances | captures;
-            for dest in destinations.iter() {
-                result.insert(dest, LegalMove::Standard(from, dest));
-            }
+        let (advances, captures) = match state.turn() {
+            White => (WHITE_SINGLE_ADVANCES[from], WHITE_PAWN_ATTACKS[from]),
+            Black => (BLACK_SINGLE_ADVANCES[from], BLACK_PAWN_ATTACKS[from]),
+        };
+        let advances = advances & !state.occupied();
+        let captures = captures & state.theirs();
+        let destinations = (advances | captures) & state.allowed(from);
+        for dest in destinations.iter() {
+            result.insert(dest, LegalMove::Standard(from, dest));
         }
         result
     }
@@ -473,23 +438,14 @@ pub trait LegalMoves: AsRef<Position> + AsRef<MoveState> {
     fn double_advance_moves(&self, from: Square) -> MoveSet<LegalMove> {
         let mut result = MoveSet::new();
         let state: &MoveState = self.as_ref();
-        if !state.is_double_check() {
-            let pos: &Position = self.as_ref();
-            let mut destinations = match pos.turn() {
-                White => WHITE_DOUBLE_ADVANCES[from],
-                Black => BLACK_DOUBLE_ADVANCES[from],
-            };
-            // restrict movement if pinned
-            if let Some(lane) = state.pinned(from) {
-                destinations &= lane;
-            }
-            // exclude occupied squares
-            destinations &= !pos.occupied();
-            for dest in destinations.iter() {
-                let between = between(from, dest);
-                if (between & pos.occupied()).is_empty() {
-                    result.insert(dest, LegalMove::DoubleAdvance(from, dest));
-                }
+        let destinations = match state.turn() {
+            White => WHITE_DOUBLE_ADVANCES[from],
+            Black => BLACK_DOUBLE_ADVANCES[from],
+        };
+        let destinations = destinations & !state.occupied() & state.allowed(from);
+        for dest in destinations.iter() {
+            if (between(from, dest) & state.occupied()).is_empty() {
+                result.insert(dest, LegalMove::DoubleAdvance(from, dest));
             }
         }
         result
@@ -498,22 +454,18 @@ pub trait LegalMoves: AsRef<Position> + AsRef<MoveState> {
     fn en_passant_moves(&self, from: Square) -> MoveSet<LegalMove> {
         let mut result = MoveSet::new();
         let state: &MoveState = self.as_ref();
-        if !state.is_double_check() {
-            let pos: &Position = self.as_ref();
-            if let Some(target) = pos.en_passant() {
-                let mut destinations = match pos.turn() {
-                    White => WHITE_PAWN_ATTACKS[from],
-                    Black => BLACK_PAWN_ATTACKS[from],
-                };
-                // exclude any non-en-passant squares
-                destinations &= target.to_mask();
-                // restrict movement if pinned
-                if let Some(lane) = state.pinned(from) {
-                    destinations &= lane;
-                }
-                for dest in destinations.iter() {
-                    result.insert(dest, LegalMove::EnPassant(from, dest));
-                }
+        let pos: &Position = self.as_ref();
+        let Some(target) = pos.en_passant() else {
+            return result;
+        };
+        let attacks = match state.turn() {
+            White => WHITE_PAWN_ATTACKS[from],
+            Black => BLACK_PAWN_ATTACKS[from],
+        };
+        if attacks.contains(target) {
+            let mv = LegalMove::EnPassant(from, target);
+            if state.en_passant_is_safe(mv) {
+                result.insert(target, mv);
             }
         }
         result
@@ -539,7 +491,7 @@ pub trait PreMoves: AsRef<Position> {
             }
             Ok(PreMove::Promoting(mv.from, mv.to, mv.promotion.unwrap()))
         } else {
-            Ok(pre_moves.get(mv.from).unwrap())
+            Ok(pre_moves.get(mv.to).unwrap())
         }
     }
 
@@ -1293,4 +1245,141 @@ mod tests {
         let destinations = state.legal_moves(C1).destinations();
         assert_eq!(destinations, Mask::empty());
     }
+    // --- the king's safety, decided by masks -------------------------------------
+
+    fn position(changes: &[(Square, Option<Material>)]) -> Position {
+        changes
+            .iter()
+            .fold(Position::default(), |pos, (sq, mat)| pos.set_contents(*sq, *mat))
+    }
+
+    fn destinations(state: &MoveState, from: Square) -> Vec<Square> {
+        state.legal_moves(from).destinations().iter().collect()
+    }
+
+    #[test]
+    fn test_single_check_must_be_answered() {
+        // the e-file is open and a black rook on e5 gives check
+        let state = MoveState::new(position(&[
+            (E2, None),
+            (E7, None),
+            (A8, None),
+            (E5, Some(Material::BR)),
+        ]));
+        assert!(state.is_check());
+        // the knight may only block
+        assert_eq!(destinations(&state, G1), vec![E2]);
+        // the bishop may only block
+        assert_eq!(destinations(&state, F1), vec![E2]);
+        // a pawn that can do neither has no move
+        assert!(destinations(&state, A2).is_empty());
+        // the king cannot step up the file it is attacked along
+        assert!(destinations(&state, E1).is_empty());
+    }
+
+    #[test]
+    fn test_single_check_can_be_answered_by_capture() {
+        let state = MoveState::new(position(&[
+            (E2, None),
+            (E7, None),
+            (A8, None),
+            (E3, Some(Material::BR)),
+        ]));
+        assert!(state.is_check());
+        assert_eq!(destinations(&state, D2), vec![E3]);
+        assert_eq!(destinations(&state, F2), vec![E3]);
+        assert!(destinations(&state, G1).contains(&E2));
+    }
+
+    #[test]
+    fn test_double_check_moves_only_the_king() {
+        let state = MoveState::new(position(&[
+            (E2, None),
+            (E7, None),
+            (A8, None),
+            (E5, Some(Material::BR)),
+            (D3, Some(Material::BN)),
+        ]));
+        assert!(state.is_double_check());
+        assert!(destinations(&state, G1).is_empty());
+        assert!(destinations(&state, F1).is_empty());
+        assert!(destinations(&state, E1).is_empty());
+    }
+
+    #[test]
+    fn test_king_may_not_capture_a_defended_piece() {
+        // a black knight on d5 is defended along the file by the rook on d8
+        let state = MoveState::new(position(&[
+            (E1, None),
+            (D4, Some(Material::WK)),
+            (D7, None),
+            (D5, Some(Material::BN)),
+        ]));
+        assert!(!destinations(&state, D4).contains(&D5));
+    }
+
+    #[test]
+    fn test_pinned_piece_may_capture_its_pinner() {
+        let state = MoveState::new(position(&[
+            (E2, Some(Material::WR)),
+            (E7, None),
+            (A8, None),
+            (E5, Some(Material::BR)),
+        ]));
+        assert!(state.is_pinned(E2));
+        assert_eq!(destinations(&state, E2), vec![E5, E4, E3]);
+    }
+
+    #[test]
+    fn test_pinned_knight_has_no_move() {
+        let state = MoveState::new(position(&[
+            (E2, Some(Material::WN)),
+            (E7, None),
+            (A8, None),
+            (E5, Some(Material::BR)),
+        ]));
+        assert!(state.is_pinned(E2));
+        assert!(destinations(&state, E2).is_empty());
+    }
+
+    #[test]
+    fn test_en_passant_may_not_expose_the_king_along_the_rank() {
+        // white king b5 and pawn d5 share the fifth rank with a black rook on h5; the
+        // pawn shields the king. After c7-c5 the capture d5xc6 would remove both pawns
+        // from the rank and expose the king.
+        let mut state = MoveState::new(position(&[
+            (E1, None),
+            (B5, Some(Material::WK)),
+            (D2, None),
+            (D5, Some(Material::WP)),
+            (H8, None),
+            (H5, Some(Material::BR)),
+        ]));
+        state.apply_move(LegalMove::Standard(G1, F3));
+        state.apply_move(LegalMove::DoubleAdvance(C7, C5));
+        assert_eq!(state.position.en_passant(), Some(C6));
+        assert!(!destinations(&state, D5).contains(&C6));
+        // the plain advance is still there
+        assert!(destinations(&state, D5).contains(&D6));
+    }
+
+    #[test]
+    fn test_validate_move_accepts_a_pawn_advance() {
+        let state = MoveState::default();
+        assert!(state.validate_move(Move::new(E2, E4, None)).is_ok());
+        assert!(state.validate_move(Move::new(E2, E5, None)).is_err());
+    }
+
+    #[test]
+    fn test_no_legal_move_is_checkmate() {
+        // the fool's mate position: 1. f3 e5 2. g4 Qh4#
+        let mut state = MoveState::default();
+        state.apply_move(LegalMove::Standard(F2, F3));
+        state.apply_move(LegalMove::DoubleAdvance(E7, E5));
+        state.apply_move(LegalMove::DoubleAdvance(G2, G4));
+        state.apply_move(LegalMove::Standard(D8, H4));
+        assert!(state.is_check());
+        assert!(!state.has_any_legal_move());
+    }
+
 }
